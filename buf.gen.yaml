@@ -1,0 +1,12 @@
+# The C++ target of the protos, as the client fetches it (scripts/fetch-protos.sh).
+# Pins match the libraries scripts/fetch-deps.sh vendors (protobuf 4.23.4, gRPC 1.57.0).
+# When the protos repository's own pipeline generates C++ beside Go and TypeScript
+# (design, Law: generated, never written), this file moves there.
+version: v2
+managed:
+  enabled: false
+plugins:
+  - remote: buf.build/protocolbuffers/cpp:v23.4
+    out: cpp
+  - remote: buf.build/grpc/cpp:v1.57.0
+    out: cpp

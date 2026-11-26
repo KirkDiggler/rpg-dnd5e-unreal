@@ -1,0 +1,83 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "rpg: bootstrap (fetch the contract, the libraries, the content)",
+      "group": "build",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-c",
+        "scripts/bootstrap.sh"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "clear": true
+      }
+    },
+    {
+      "label": "rpg: build the editor target",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-c",
+        "scripts/build.sh"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [
+        "$gcc",
+        "$msCompile"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "clear": true
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "dependsOn": "rpg: bootstrap (fetch the contract, the libraries, the content)"
+    },
+    {
+      "label": "rpg: test",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-c",
+        "scripts/test.sh"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "clear": true
+      },
+      "dependsOn": "rpg: build the editor target"
+    },
+    {
+      "label": "rpg: every file compiled alone",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-c",
+        "scripts/perfile-check.py --regen 2"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "clear": true
+      }
+    }
+  ]
+}
