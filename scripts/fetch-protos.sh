@@ -25,19 +25,15 @@ mkdir -p "$TMP/src"
 git -C "$PROTOS" archive HEAD | tar -x -C "$TMP/src"
 COMMIT="$(git -C "$PROTOS" rev-parse HEAD)"
 
-# R2, until it lands: `InteractResponse.descriptor` and `TradeResponse.descriptor`
-# (dnd5e.api.session.v1alpha1.service) collide with protobuf's own
-# Message::descriptor() in C++. A field's name is not on the wire, so the two are
-# renamed in the copy and the generated code speaks the same bytes. The day the
-# protos carry the rename, the count below is not two and this stops: delete it.
-PROTO="$TMP/src/dnd5e/api/session/v1alpha1/service.proto"
-COUNT="$(grep -c '^  WorldNPCDescriptor descriptor = 1;' "$PROTO" || true)"
-if [ "$COUNT" != "2" ]; then
-  echo "fetch-protos: R2's rename expects two fields named \`descriptor\` in InteractResponse and TradeResponse, and finds $COUNT." >&2
-  echo "fetch-protos: if R2 has landed, remove this step." >&2
+# The contract as the protos carry it. A checkout from before the two `descriptor`
+# fields were renamed (rpg-api-protos#457) does not compile in C++: the accessor
+# collides with the one every message has. Said here, where the cause is plain,
+# rather than in a generated header.
+if grep -q '^  WorldNPCDescriptor descriptor = ' "$TMP/src/dnd5e/api/session/v1alpha1/service.proto"; then
+  echo "fetch-protos: $(basename "$PROTOS") @ ${COMMIT:0:7} predates rpg-api-protos#457, which renamed the two \`descriptor\` fields; the C++ it generates does not compile." >&2
+  echo "fetch-protos: update that checkout, or point RPG_API_PROTOS_DIR at one that has it." >&2
   exit 1
 fi
-sed -i 's/^  WorldNPCDescriptor descriptor = 1;/  WorldNPCDescriptor npc_descriptor = 1;/' "$PROTO"
 
 buf generate --template "$ROOT/buf.gen.yaml" --output "$TMP/gen" "$TMP/src"
 
@@ -49,6 +45,5 @@ cat > "$OUT/SOURCE" <<NOTE
 generated $(date -u +%Y-%m-%dT%H:%MZ) by scripts/fetch-protos.sh
 protos: $PROTOS @ $COMMIT
 plugins: $(grep -E 'remote:' "$ROOT/buf.gen.yaml" | sed -E 's/.*remote: *//; s/^/  /')
-with R2's rename applied to the copy (descriptor -> npc_descriptor in InteractResponse, TradeResponse)
 NOTE
 echo "fetch-protos: $(find "$OUT" -name '*.pb.cc' | wc -l) .pb.cc, $(find "$OUT" -name '*.pb.h' | wc -l) .pb.h from $(basename "$PROTOS") @ ${COMMIT:0:7}"
