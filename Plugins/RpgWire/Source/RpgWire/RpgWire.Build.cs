@@ -36,6 +36,8 @@ public class RpgWire : ModuleRules
         string thirdParty = Path.GetFullPath(Path.Combine(ModuleDirectory, "..", "ThirdParty"));
 
         PrivateIncludePaths.Add(Path.Combine(ModuleDirectory, "Private", "pb"));
+        // Ahead of every source file, the generated contract included: see RpgPbGuard.h.
+        ForceIncludeFiles.Add(Path.Combine(ModuleDirectory, "Private", "RpgPbGuard.h"));
         // One include tree for every family: scripts/build-libs.sh writes it here.
         PublicSystemIncludePaths.Add(Path.Combine(thirdParty, "grpc", "include"));
 
