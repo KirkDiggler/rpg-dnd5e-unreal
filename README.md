@@ -59,7 +59,7 @@ Plugins/RpgWire/
     RpgClient/
       RpgMotion.h, .cpp            what a record beat means for figures
       Tests/
-    ThirdParty/                    gRPC and protobuf; fetched, never committed
+    ThirdParty/                    gRPC and protobuf, built by scripts/build-libs.sh; never committed
 scripts/                           everything fetched or built goes through these
 protos.ref                         the protos tag this client builds against
 ```
@@ -100,32 +100,44 @@ flowchart LR
     T -->|"module proxy, the tag's commit"| A["rpg-api (Go)"]
     T -->|"npm tarball of the tag,<br/>from GitHub"| W["rpg-dnd5e-web (TypeScript)"]
     T -->|"git fetch of the tag,<br/>one commit deep"| U["this client"]
-    U -->|"buf generate, generators pinned here"| P["Plugins/RpgWire/Source/RpgWire/Private/pb/"]
+    U -->|"buf build, then protoc and grpc_cpp_plugin<br/>built here from the same pin"| P["Plugins/RpgWire/Source/RpgWire/Private/pb/"]
 ```
 
 The other two clients consume code the protos pipeline generates. This one
-consumes the tag's *sources* and generates the C++ itself, with the two
-plugins pinned in `buf.gen.yaml` (design ruling R8). The reason is the
-runtime: generated C++ is bound to the protobuf and gRPC it links, and
-those versions are this repository's to choose until R3 rules, so the
-generators and the runtime are pinned side by side here. A bump is a
-one-line change to `protos.ref`, as the web's is to its `package.json`.
+consumes the tag's *sources* and generates the C++ itself, with `protoc` and
+`grpc_cpp_plugin` that `scripts/build-libs.sh` builds from the same commit as
+the runtime (design rulings R3 and R8). Generated C++ is bound to the
+protobuf and gRPC it links, so the generators and the runtime come from one
+pin and cannot drift. A bump of the contract is a one-line change to
+`protos.ref`, as the web's is to its `package.json`; a bump of the runtime
+and its generators is a one-line change to `scripts/libs/vcpkg.pin`.
 
 `Private/pb/` is never committed and never edited: a field with the wrong
 name is fixed in the protos and regenerated.
 
-The libraries in `Source/ThirdParty/` are a pinned archive (gRPC 1.57.0,
-protobuf 4.23.4). They are a stopgap until R3 rules on the libraries' own
-build.
+The libraries in `Source/ThirdParty/` are built, not fetched.
+`scripts/build-libs.sh` takes vcpkg at the commit in
+`scripts/libs/vcpkg.pin` and builds gRPC, protobuf, abseil, re2, c-ares,
+OpenSSL and zlib with the engine's own compiler against the engine's own
+libc++, with the flags a module compiles with — no exceptions, no RTTI,
+hidden visibility — through `scripts/libs/ue-linux.toolchain.cmake` and the
+triplet beside it. `scripts/test-libs.sh` measures the result: no RTTI, no
+exceptions, the pin written down.
 
 ## Build and test
 
-Needs Linux, Unreal Engine 5.9 and [`buf`](https://buf.build). No checkout
-of the protos repository is needed.
+Needs Linux, Unreal Engine 5.9, [`buf`](https://buf.build) and a C++
+compiler for this machine, which builds the generators. No checkout of the
+protos repository is needed.
 
 ```
-scripts/bootstrap.sh     fetch the libraries, generate the contract, mount
-                         content if rpg-game-assets is beside this repository
+scripts/bootstrap.sh     build the libraries (about ten minutes cold), generate
+                         the contract, mount content if rpg-game-assets is
+                         beside this repository
+scripts/build-libs.sh    build gRPC and protobuf with the engine's own toolchain,
+                         from the pin in scripts/libs/vcpkg.pin
+scripts/test-libs.sh     the three facts about the libraries: built by this
+                         repository, built as the module is built, the pin written down
 scripts/build.sh         build the editor target
 scripts/test.sh          run the tests: the beat-reading always; the verbs
                          against the engine's test server when RPGWIRE_TEST_ADDR

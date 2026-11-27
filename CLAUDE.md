@@ -17,14 +17,15 @@ a seam. The workspace's own rules are in the root `AGENTS.md` of game-dev.
 | how the client talks to the engine | `Plugins/RpgWire/Source/RpgWire/` | plain C++: no Unreal type in `Public/` beyond the export macro; every call blocking, run off the game thread |
 | what a record beat means | `Plugins/RpgWire/Source/RpgClient/` | a function with no world in it, tested against beats the engine wrote |
 | how a beat is shown | a later module, not yet here | motion only from what the record says, never from a verb's response |
-| what is generated or vendored | `scripts/`, never by hand | `Private/pb/` and `Source/ThirdParty/` are ignored for a reason |
+| what is generated or built | `scripts/`, never by hand | `Private/pb/` and `Source/ThirdParty/` are ignored for a reason |
 
 ## Before you build
 
-`scripts/bootstrap.sh`, once. It generates the compiled contract from the
-protos repository at the tag in `protos.ref` (ruling R8) and fetches the
-libraries from a pinned archive. The libraries are a stopgap until R3
-rules on their own build.
+`scripts/bootstrap.sh`, once. It builds the libraries with the engine's own
+toolchain from one pin, `scripts/libs/vcpkg.pin` (ruling R3; about ten
+minutes, once), generates the compiled contract from the protos repository at
+the tag in `protos.ref` with generators from that same pin (ruling R8), and
+mounts the content if the store is beside this repository.
 
 ## Verify, and say what you ran
 
@@ -32,6 +33,8 @@ rules on their own build.
 - `scripts/test.sh` — the beat-reading's tests; with the engine's test
   server running (`RPGWIRE_TEST_ADDR`, `RPGWIRE_TEST_INFO`), the verbs'.
   The editor's exit status is not the verdict; read the per-test results.
+- `scripts/test-libs.sh` — the libraries: built by this repository, built as
+  the module is built, the pin written down.
 - `scripts/perfile-check.py` — every `.cpp` compiled alone. Unreal builds
   a module amalgamated, which lets a file borrow an include from its
   neighbour; the editor and this check do not.
@@ -51,6 +54,7 @@ from which commit.
 
 ## Open
 
-On the design PR's checklists: R2 (the `descriptor` rename), R3 (the
-libraries' build), R4 (where the engine runs), the engine version, and the
-interaction model, O1, which is this client's own design.
+The story, [rpg-project#1237](https://github.com/KirkDiggler/rpg-project/issues/1237),
+carries the work and any ruling still open; the design's table has R1 to R9
+settled. The interaction model, O1, is this client's own design, and starts
+with the story.

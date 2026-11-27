@@ -11,10 +11,12 @@
 // directories keep the seam that matters: the stream can be compiled and
 // tested without the editor, as the spike's headless client was.
 //
-// The libraries are protobuf 4.23.4 and gRPC 1.57.0 — what TurboLink v1.4.2
-// ships for UE 5.6, built with clang 16, libc++, no exceptions, no RTTI.
-// None of TurboLink's own code is used. Unreal compiles with no RTTI by
-// default, so only that is stated again, to be explicit about the match.
+// The libraries are gRPC and protobuf — the versions the package tree at
+// scripts/libs/vcpkg.pin holds — built for the engine's own toolchain by
+// scripts/build-libs.sh: the engine's clang and libc++, no exceptions, no
+// RTTI, hidden visibility, the flags this module compiles with (ruling R3).
+// What was built is in Source/ThirdParty/SOURCE. Unreal compiles with no RTTI
+// by default, so only that is stated again, to be explicit about the match.
 using System;
 using System.IO;
 using UnrealBuildTool;
@@ -34,10 +36,10 @@ public class RpgWire : ModuleRules
         string thirdParty = Path.GetFullPath(Path.Combine(ModuleDirectory, "..", "ThirdParty"));
 
         PrivateIncludePaths.Add(Path.Combine(ModuleDirectory, "Private", "pb"));
-        foreach (string lib in new[] { "protobuf", "grpc", "re2", "abseil" })
-        {
-            PublicSystemIncludePaths.Add(Path.Combine(thirdParty, lib, "include"));
-        }
+        // Ahead of every source file, the generated contract included: see RpgPbGuard.h.
+        ForceIncludeFiles.Add(Path.Combine(ModuleDirectory, "Private", "RpgPbGuard.h"));
+        // One include tree for every family: scripts/build-libs.sh writes it here.
+        PublicSystemIncludePaths.Add(Path.Combine(thirdParty, "grpc", "include"));
 
         PrivateDefinitions.Add("GOOGLE_PROTOBUF_NO_RTTI");
         PrivateDefinitions.Add("NOMINMAX");
@@ -57,19 +59,16 @@ public class RpgWire : ModuleRules
                 string dir = Path.Combine(thirdParty, libDir, "lib", platformDir, config);
                 if (!Directory.Exists(dir))
                 {
-                    throw new BuildException("RpgWire: no libraries vendored for " + platformDir + "/" + config + " at " + dir);
+                    throw new BuildException("RpgWire: no libraries built for " + platformDir + "/" + config + " at " + dir);
                 }
                 string[] files = Directory.GetFiles(dir, pattern);
                 Array.Sort(files, StringComparer.Ordinal);
                 PublicAdditionalLibraries.AddRange(files);
             }
-            // gRPC's TLS and compression come from the engine, as in TurboLink's own module.
-            AddEngineThirdPartyPrivateStaticDependencies(Target, "OpenSSL");
-            AddEngineThirdPartyPrivateStaticDependencies(Target, "zlib");
         }
         else
         {
-            throw new BuildException("RpgWire: no libraries are vendored for platform " + Target.Platform);
+            throw new BuildException("RpgWire: no libraries are built for platform " + Target.Platform);
         }
     }
 }

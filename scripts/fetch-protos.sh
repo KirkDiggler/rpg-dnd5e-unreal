@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Generates the compiled contract into Plugins/RpgWire/Source/RpgWire/Private/pb
 # (ignored by git): C++ from every proto in the protos repository, at the tag
-# this repository pins, with buf.gen.yaml at the repository's root. Headers keep
-# their package directories; the .cc files are flattened, because ten packages
+# this repository pins, with protoc and grpc_cpp_plugin that scripts/build-libs.sh
+# builds from the same pin as the runtime. Headers keep their package
+# directories; the .cc files are flattened, because ten packages
 # name a file service.proto and Unreal names build products by file name.
 #
 # The contract comes from the published tag (design ruling R8): fetched from
@@ -56,7 +57,20 @@ if grep -q '^  WorldNPCDescriptor descriptor = ' "$TMP/src/dnd5e/api/session/v1a
   exit 1
 fi
 
-buf generate --template "$ROOT/buf.gen.yaml" --output "$TMP/gen" "$TMP/src"
+# buf resolves the contract into one descriptor set; the generators are this
+# machine's, built from the same pin as the libraries (design ruling R8). When
+# the protos repository's own pipeline generates C++ beside Go and TypeScript,
+# this moves there.
+TOOLS="$ROOT/.libs/vcpkg/x64-linux/tools"
+PROTOC="$TOOLS/protobuf/protoc"
+GRPC_CPP_PLUGIN="$TOOLS/grpc/grpc_cpp_plugin"
+[ -x "$PROTOC" ] && [ -x "$GRPC_CPP_PLUGIN" ] || { say "no generators at $TOOLS; run scripts/build-libs.sh first"; exit 1; }
+mkdir -p "$TMP/gen/cpp"
+buf build --output "$TMP/contract.binpb" "$TMP/src"
+(cd "$TMP/src" && buf ls-files | grep '\.proto$') > "$TMP/files.txt"
+(cd "$TMP/src" && "$PROTOC" --descriptor_set_in="$TMP/contract.binpb" \
+  --plugin=protoc-gen-grpc="$GRPC_CPP_PLUGIN" --cpp_out="$TMP/gen/cpp" --grpc_out="$TMP/gen/cpp" \
+  $(cat "$TMP/files.txt"))
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
@@ -65,6 +79,6 @@ mkdir -p "$OUT"
 cat > "$OUT/SOURCE" <<NOTE
 generated $(date -u +%Y-%m-%dT%H:%MZ) by scripts/fetch-protos.sh
 protos: $FROM
-plugins: $(grep -E 'remote:' "$ROOT/buf.gen.yaml" | sed -E 's/.*remote: *//; s/^/  /')
+generators: $("$PROTOC" --version), grpc_cpp_plugin $(sed -n 's/^generators .*grpc_cpp_plugin //p' "$ROOT/Plugins/RpgWire/Source/ThirdParty/SOURCE")
 NOTE
 echo "fetch-protos: $(find "$OUT" -name '*.pb.cc' | wc -l) .pb.cc, $(find "$OUT" -name '*.pb.h' | wc -l) .pb.h from $FROM"
