@@ -6,8 +6,10 @@ the first: generated code from the same protos, the same auth boundary,
 the same seat gates, the same verbs in and record out. It opens no door of
 its own, and the engine gains nothing for its sake.
 
-The design is law in `rpg-project`, `ideas/unreal-client/design.md`, on review in
-[rpg-project#1155](https://github.com/KirkDiggler/rpg-project/pull/1155):
+The design is law in `rpg-project`,
+[ideas/unreal-client/design.md](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/unreal-client/design.md),
+with its rulings; the story that carries the work is
+[rpg-project#1237](https://github.com/KirkDiggler/rpg-project/issues/1237):
 one engine, every client; generated, never written; intent in, record out;
 the same door; no side channel.
 
