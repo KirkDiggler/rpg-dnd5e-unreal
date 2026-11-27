@@ -1,0 +1,3 @@
+# The protos tag this client is built against. A bump is a one-line change here,
+# like the web's pin in package.json.
+v0.1.292
