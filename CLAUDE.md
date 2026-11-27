@@ -21,9 +21,10 @@ a seam. The workspace's own rules are in the root `AGENTS.md` of game-dev.
 
 ## Before you build
 
-`scripts/bootstrap.sh`, once. It fetches the compiled contract from the
-protos repository beside this one and the libraries from a pinned
-archive. Both are stopgaps the design PR's open rulings replace (R2, R3).
+`scripts/bootstrap.sh`, once. It generates the compiled contract from the
+protos repository at the tag in `protos.ref` (ruling R8) and fetches the
+libraries from a pinned archive. The libraries are a stopgap until R3
+rules on their own build.
 
 ## Verify, and say what you ran
 

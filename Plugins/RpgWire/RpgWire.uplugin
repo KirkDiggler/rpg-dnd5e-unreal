@@ -1,0 +1,21 @@
+{
+	"FileVersion": 3,
+	"VersionName": "0.1",
+	"FriendlyName": "RpgWire",
+	"Description": "The RPG engine's client core: the compiled contract, a session that speaks to the engine in plain C++, the record read back, and the client's reading of a beat.",
+	"Category": "Networking",
+	"CanContainContent": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "RpgWire",
+			"Type": "Runtime",
+			"LoadingPhase": "PreDefault"
+		},
+		{
+			"Name": "RpgClient",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}
