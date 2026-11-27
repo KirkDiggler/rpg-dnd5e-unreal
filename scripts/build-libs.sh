@@ -53,9 +53,16 @@ AT="$(git -C "$VCPKG" rev-parse HEAD)"
 
 # Two installs, in this order: the libraries for the engine's target, then the
 # generators for this machine. The triplet and the toolchain file do the rest.
+# --clean-after-build: vcpkg keeps every package's build tree otherwise —
+# some 15 GB for this set, every time the pin or the triplet changes.
 export UE_LINUX_SDK="$SDK" UE_VCPKG_INSTALL_ROOT="$WORK"
-"$VCPKG/vcpkg" install grpc --classic --triplet x64-linux-ue --overlay-triplets="$LIBS/triplets" --x-install-root="$WORK"
-"$VCPKG/vcpkg" install grpc --classic --triplet x64-linux --x-install-root="$WORK"
+"$VCPKG/vcpkg" install grpc --classic --triplet x64-linux-ue --overlay-triplets="$LIBS/triplets" --x-install-root="$WORK" --clean-after-build
+"$VCPKG/vcpkg" install grpc --classic --triplet x64-linux --x-install-root="$WORK" --clean-after-build
+
+# Debug builds of either tree are never linked: the module takes Release for
+# every configuration but Debug, and the generators are release tools. Some
+# 4 GB on this machine, otherwise.
+rm -rf "$WORK/x64-linux-ue/debug" "$WORK/x64-linux/debug"
 
 # Into the shape the module links: one include tree; the libraries by family,
 # Release only. Left out: what the kept libraries already define a second time
