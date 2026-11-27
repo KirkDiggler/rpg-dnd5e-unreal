@@ -25,6 +25,7 @@ Plugins/*/Intermediate/
 Plugins/RpgWire/Source/RpgWire/Private/pb/
 
 # gRPC and protobuf: vendored by scripts/fetch-deps.sh until R3's own build
+/.libs/
 Plugins/RpgWire/Source/ThirdParty/
 
 # Licensed content, mounted from rpg-game-assets by scripts/mount-content.sh (a link or a copy)

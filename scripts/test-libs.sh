@@ -44,10 +44,12 @@ done
 if [ -f "$PIN" ] && [ -f "$DEST/SOURCE" ]; then
   tag="$(awk '/^tag /{print $2}' "$PIN")"
   commit="$(awk '/^commit /{print $2}' "$PIN")"
-  if grep -q "$tag" "$DEST/SOURCE" && grep -q "$commit" "$DEST/SOURCE"; then
-    ok "3. built from vcpkg $tag ($commit), as scripts/libs/vcpkg.pin names it"
+  # The versions line is seven "name version" pairs: a blank one is a hole.
+  if grep -q "$tag" "$DEST/SOURCE" && grep -q "$commit" "$DEST/SOURCE" \
+     && awk '/^grpc .* · protobuf .* · abseil /{ if (NF != 20) exit 1 }' "$DEST/SOURCE"; then
+    ok "3. built from vcpkg $tag ($commit) with every version named, as scripts/libs/vcpkg.pin says"
   else
-    bad "3. ThirdParty/SOURCE does not name the pin ($tag, $commit)"
+    bad "3. ThirdParty/SOURCE does not name the pin ($tag, $commit) with every version filled"
   fi
 else
   bad "3. no scripts/libs/vcpkg.pin, or no ThirdParty/SOURCE"
