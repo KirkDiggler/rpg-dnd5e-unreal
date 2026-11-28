@@ -25,6 +25,7 @@ void ReadMember(const v1::PublicMemberInfo& wire, Member& out)
     out.monster_ref = wire.monster_ref();
     out.class_ref = wire.class_ref();
     out.faction = wire.faction();
+    out.appearance_ref = wire.appearance_ref();
 }
 void ReadSighting(const v1::Sighting& wire, Sighting& out)
 {
