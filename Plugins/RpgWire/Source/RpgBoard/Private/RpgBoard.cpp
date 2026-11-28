@@ -4,15 +4,11 @@
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "CollisionQueryParams.h"
-#include "Components/StaticMeshComponent.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Engine/HitResult.h"
-#include "Engine/StaticMesh.h"
-#include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
 #include "Materials/Material.h"
-#include "Materials/MaterialInstanceDynamic.h"
 #include "ProceduralMeshComponent.h"
 #include "RpgPlay.h"
 #include "Serialization/JsonSerializer.h"
@@ -80,30 +76,91 @@ namespace
         return FVector(CentreOf(Cell), Z);
     }
 
-    bool ApplyShape(AStaticMeshActor& Actor, const TCHAR* Path, const FLinearColor& Color)
+    struct FShape
     {
-        UStaticMesh* Mesh = LoadObject<UStaticMesh>(nullptr, Path);
-        if (!Mesh) return false;
-        UStaticMeshComponent* Component = Actor.GetStaticMeshComponent();
-        Component->SetStaticMesh(Mesh);
-        if (UMaterial* Material = LoadObject<UMaterial>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial")))
-        {
-            UMaterialInstanceDynamic* Tint = UMaterialInstanceDynamic::Create(Material, Component);
-            Tint->SetVectorParameterValue(TEXT("Color"), Color);
-            Component->SetMaterial(0, Tint);
-        }
-        return true;
+        TArray<FVector> Vertices;
+        TArray<int32> Triangles;
+        TArray<FVector> Normals;
+        void Triangle(int32 A, int32 B, int32 C) { Triangles.Append({A, B, C, A, C, B}); }
+        void Vertex(const FVector& P, const FVector& N) { Vertices.Add(P); Normals.Add(N); }
+    };
+    FShape MakeBox(FVector Size)
+    {
+        FShape Shape;
+        const FVector H = Size / 2.0;
+        for (int32 I = 0; I < 8; ++I) Shape.Vertex(FVector((I & 1) ? H.X : -H.X, (I & 2) ? H.Y : -H.Y, (I & 4) ? H.Z : -H.Z), FVector::UpVector);
+        for (const auto& T : {FIntVector(0,2,3), FIntVector(0,3,1), FIntVector(4,5,7), FIntVector(4,7,6),
+                              FIntVector(0,1,5), FIntVector(0,5,4), FIntVector(2,6,7), FIntVector(2,7,3),
+                              FIntVector(0,4,6), FIntVector(0,6,2), FIntVector(1,3,7), FIntVector(1,7,5)}) Shape.Triangle(T.X,T.Y,T.Z);
+        return Shape;
     }
-
-    AStaticMeshActor* SpawnShape(UWorld* World, const FVector& Location, const FVector& Scale)
+    FShape MakeCylinder(double Radius, double Height, int32 Segments = 24)
     {
-        AStaticMeshActor* Actor = World->SpawnActor<AStaticMeshActor>(Location, FRotator::ZeroRotator);
-        if (Actor)
+        FShape Shape;
+        for (int32 I = 0; I < Segments; ++I)
         {
-            Actor->SetMobility(EComponentMobility::Movable);
-            Actor->SetActorScale3D(Scale);
+            const double A = 2.0 * PI * I / Segments;
+            const FVector N(FMath::Cos(A), FMath::Sin(A), 0);
+            Shape.Vertex(FVector(N.X * Radius, N.Y * Radius, -Height / 2), N);
+            Shape.Vertex(FVector(N.X * Radius, N.Y * Radius, Height / 2), N);
         }
+        const int32 Bottom = Shape.Vertices.Num(); Shape.Vertex(FVector(0,0,-Height/2), -FVector::UpVector);
+        const int32 Top = Shape.Vertices.Num(); Shape.Vertex(FVector(0,0,Height/2), FVector::UpVector);
+        for (int32 I = 0; I < Segments; ++I)
+        {
+            const int32 A = I * 2, B = ((I + 1) % Segments) * 2;
+            Shape.Triangle(A,B,B+1); Shape.Triangle(A,B+1,A+1);
+            Shape.Triangle(Bottom,B,A); Shape.Triangle(Top,A+1,B+1);
+        }
+        return Shape;
+    }
+    FShape MakeSphere(double Radius, int32 Segments = 16, int32 Rings = 8)
+    {
+        FShape Shape;
+        for (int32 R = 0; R <= Rings; ++R)
+        {
+            const double Phi = PI * R / Rings;
+            for (int32 I = 0; I < Segments; ++I)
+            {
+                const double A = 2.0 * PI * I / Segments;
+                const FVector N(FMath::Sin(Phi)*FMath::Cos(A), FMath::Sin(Phi)*FMath::Sin(A), FMath::Cos(Phi));
+                Shape.Vertex(N * Radius, N);
+            }
+        }
+        for (int32 R = 0; R < Rings; ++R) for (int32 I = 0; I < Segments; ++I)
+        {
+            const int32 A = R*Segments+I, B = R*Segments+(I+1)%Segments, C = A+Segments, D = B+Segments;
+            Shape.Triangle(A,C,D); Shape.Triangle(A,D,B);
+        }
+        return Shape;
+    }
+    UProceduralMeshComponent* MeshOf(AActor* Actor) { return Actor ? Actor->FindComponentByClass<UProceduralMeshComponent>() : nullptr; }
+    void ApplyShape(AActor& Actor, const FShape& Shape, const FLinearColor& Colour, bool Collision = true)
+    {
+        auto* Mesh = MeshOf(&Actor);
+        if (!Mesh) return;
+        TArray<FColor> Colours;
+        Colours.Init(Colour.ToFColor(true), Shape.Vertices.Num());
+        Mesh->CreateMeshSection(0, Shape.Vertices, Shape.Triangles, Shape.Normals, {}, Colours, {}, Collision);
+        Mesh->SetMaterial(0, LoadObject<UMaterial>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial")));
+    }
+    AActor* SpawnShape(UWorld* World, const FVector& Location)
+    {
+        AActor* Actor = World->SpawnActor<AActor>(Location, FRotator::ZeroRotator);
+        if (!Actor) return nullptr;
+        auto* Mesh = NewObject<UProceduralMeshComponent>(Actor);
+        Actor->SetRootComponent(Mesh);
+        Actor->AddInstanceComponent(Mesh);
+        Mesh->SetMobility(EComponentMobility::Movable);
+        Mesh->bUseComplexAsSimpleCollision = true;
+        Mesh->RegisterComponent();
         return Actor;
+    }
+    FShape FigureShape(ERpgSide Side)
+    {
+        if (Side == ERpgSide::Player) return MakeCylinder(30,100);
+        if (Side == ERpgSide::Monster) return MakeBox(FVector(60,60,100));
+        return MakeSphere(50);
     }
 
     bool ReadNames(const FJsonObject& Payload, const TCHAR* Key, TArray<FString>& Names)
@@ -255,7 +312,6 @@ void ARpgBoard::ShotSubjects(TArray<FRpgShotSubject>& Out) const
         return false;
     };
     auto CellBox = [](const FIntPoint& Cell) { const FVector Point = At(Cell, 2.0); return FBox(Point - FVector(1, 1, 0), Point + FVector(1, 1, 0)); };
-    if (!OccupiedAt(StartCell)) Out.Add({TEXT("start"), CellBox(StartCell), true, RpgLook::HexOf(RpgLook::kFloorStart)});
     int Added = 0;
     for (const FIntPoint& Cell : KnownCells)
     {
@@ -269,10 +325,12 @@ void ARpgBoard::ShotSubjects(TArray<FRpgShotSubject>& Out) const
 void ARpgBoard::PlaceFigure(const FString& Member, ERpgSide Side, const FIntPoint& Cell)
 {
     if (HasFigure(Member)) return;
-    if (AStaticMeshActor* Figure = SpawnShape(GetWorld(), At(Cell, 51.0), FVector(0.60, 0.60, 1.0)))
+    if (AActor* Figure = SpawnShape(GetWorld(), At(Cell, 50.0)))
     {
         Figures.Add(Member, Figure);
         SetFigureSide(Member, Side);
+        const TCHAR* Shape = Side == ERpgSide::Player ? TEXT("cylinder") : Side == ERpgSide::Monster ? TEXT("box") : TEXT("sphere");
+        UE_LOG(LogRpgPlay, Display, TEXT("SHAPE %s %s"), *Member, Shape);
     }
 }
 
@@ -280,7 +338,7 @@ bool ARpgBoard::HasFigure(const FString& Member) const { return IsValid(Figures.
 
 void ARpgBoard::RemoveFigure(const FString& Member)
 {
-    AStaticMeshActor* Figure = Figures.FindRef(Member);
+    AActor* Figure = Figures.FindRef(Member);
     if (IsValid(Figure)) Figure->Destroy();
     Figures.Remove(Member);
     Sides.Remove(Member);
@@ -296,40 +354,22 @@ void ARpgBoard::RemoveFigure(const FString& Member)
 
 void ARpgBoard::SetFigureSide(const FString& Member, ERpgSide Side)
 {
-    AStaticMeshActor* Figure = Figures.FindRef(Member);
+    AActor* Figure = Figures.FindRef(Member);
     const ERpgSide* Previous = Sides.Find(Member);
     if (!IsValid(Figure) || (Previous && *Previous == Side)) return;
-    const TCHAR* Path = TEXT("/Engine/BasicShapes/Sphere.Sphere");
-    const TCHAR* Name = TEXT("npc");
-    FLinearColor Tint = RpgLook::FigureColour(Side, Words.FindRef(Member), Member == Marked, Downed.FindRef(Member));
-    if (Side == ERpgSide::Player)
-    {
-        Path = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
-        Name = TEXT("player");
-
-    }
-    else if (Side == ERpgSide::Monster)
-    {
-        Path = TEXT("/Engine/BasicShapes/Cube.Cube");
-        Name = TEXT("monster");
-
-    }
-    if (ApplyShape(*Figure, Path, Tint))
-    {
-        Sides.Add(Member, Side);
-        ApplyColour(Member);
-        UE_LOG(LogRpgPlay, Display, TEXT("FIGURE %s side=%s"), *Member, Name);
-    }
+    const TCHAR* Name = Side == ERpgSide::Player ? TEXT("player") : Side == ERpgSide::Monster ? TEXT("monster") : TEXT("npc");
+    Sides.Add(Member, Side);
+    ApplyColour(Member);
+    UE_LOG(LogRpgPlay, Display, TEXT("FIGURE %s side=%s"), *Member, Name);
 }
 
 void ARpgBoard::ApplyColour(const FString& Member)
 {
-    AStaticMeshActor* Figure = Figures.FindRef(Member);
+    AActor* Figure = Figures.FindRef(Member);
     const ERpgSide* Side = Sides.Find(Member);
     if (!IsValid(Figure) || !Side) return;
     const FLinearColor Colour = RpgLook::FigureColour(*Side, Words.FindRef(Member), Member == Marked, Downed.FindRef(Member));
-    UMaterialInstanceDynamic* Material = Cast<UMaterialInstanceDynamic>(Figure->GetStaticMeshComponent()->GetMaterial(0));
-    if (Material) Material->SetVectorParameterValue(TEXT("Color"), Colour);
+    ApplyShape(*Figure, FigureShape(*Side), Colour);
     UE_LOG(LogRpgPlay, Display, TEXT("COLOUR %s %s"), *Member, *RpgLook::HexOf(Colour));
 }
 void ARpgBoard::SetFigureWord(const FString& Member, const FString& Word)
@@ -340,14 +380,14 @@ void ARpgBoard::SetFigureWord(const FString& Member, const FString& Word)
 }
 void ARpgBoard::SetFigureDowned(const FString& Member, bool IsDowned)
 {
-    AStaticMeshActor* Figure = Figures.FindRef(Member);
+    AActor* Figure = Figures.FindRef(Member);
     if (!IsValid(Figure)) return;
     Downed.Add(Member, IsDowned);
     FRotator Rotation = Figure->GetActorRotation();
     Rotation.Roll = IsDowned ? 90.0 : 0.0;
     Figure->SetActorRotation(Rotation);
     FVector Location = Figure->GetActorLocation();
-    Location.Z = IsDowned ? 31.0 : 51.0;
+    Location.Z = IsDowned && Sides.FindRef(Member) != ERpgSide::Npc ? 30.0 : 50.0;
     Figure->SetActorLocation(Location);
     ApplyColour(Member);
 }
@@ -359,10 +399,10 @@ void ARpgBoard::MoveMarkerTo(const FString& Whose)
     ApplyColour(Marked);
     if (!Marker && !Marked.IsEmpty())
     {
-        Marker = SpawnShape(GetWorld(), FVector::ZeroVector, FVector(1.8, 1.8, 0.02));
+        Marker = SpawnShape(GetWorld(), FVector::ZeroVector);
         if (Marker)
         {
-            ApplyShape(*Marker, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"), RpgLook::kPlayerActive);
+            ApplyShape(*Marker, MakeCylinder(90, 2), RpgLook::kPlayerActive, false);
             Marker->SetActorEnableCollision(false);
         }
     }
@@ -371,16 +411,17 @@ void ARpgBoard::MoveMarkerTo(const FString& Whose)
 void ARpgBoard::UpdateMarker()
 {
     if (!Marker) return;
-    const AStaticMeshActor* Figure = Marked.IsEmpty() ? nullptr : Figures.FindRef(Marked).Get();
+    const AActor* Figure = Marked.IsEmpty() ? nullptr : Figures.FindRef(Marked).Get();
     Marker->SetActorHiddenInGame(!IsValid(Figure));
     if (IsValid(Figure)) { FVector Pos = Figure->GetActorLocation(); Pos.Z = 1.0; Marker->SetActorLocation(Pos); }
 }
 void ARpgBoard::BuildGround()
 {
     if (IsValid(Ground.Get())) Ground->Destroy();
-    Ground = SpawnShape(GetWorld(), FVector(0, 0, -2), FVector(400, 400, 1));
-    if (Ground && ApplyShape(*Ground, TEXT("/Engine/BasicShapes/Plane.Plane"), RpgLook::kGround))
+    Ground = SpawnShape(GetWorld(), FVector(0, 0, -2));
+    if (Ground)
     {
+        ApplyShape(*Ground, MakeBox(FVector(40000, 40000, 2)), RpgLook::kGround, false);
         Ground->SetActorEnableCollision(false);
         UE_LOG(LogRpgPlay, Display, TEXT("GROUND ok"));
     }
@@ -391,10 +432,10 @@ void ARpgBoard::BuildWalls(const TArray<FRpgWall>& InWalls)
     Walls.Reset();
     for (const FRpgWall& Wall : InWalls)
     {
-        AStaticMeshActor* Actor = SpawnShape(GetWorld(), Wall.Centre, Wall.Size / 100.0);
+        AActor* Actor = SpawnShape(GetWorld(), Wall.Centre);
         if (!Actor) continue;
         Actor->SetActorRotation(FRotator(0, Wall.Yaw, 0));
-        if (!ApplyShape(*Actor, TEXT("/Engine/BasicShapes/Cube.Cube"), Wall.Door ? RpgLook::kWood : RpgLook::kStone)) { Actor->Destroy(); continue; }
+        ApplyShape(*Actor, MakeBox(Wall.Size), Wall.Door ? RpgLook::kWood : RpgLook::kStone);
         Walls.Add(Actor);
     }
     UE_LOG(LogRpgPlay, Display, TEXT("WALLS drawn=%d"), Walls.Num());
@@ -413,7 +454,7 @@ void ARpgBoard::BeginMotion(const FMotionStep& Step)
         MoveMarkerTo(Step.member);
         return;
     }
-    AStaticMeshActor* Figure = Figures.FindRef(Step.member);
+    AActor* Figure = Figures.FindRef(Step.member);
     if (!IsValid(Figure)) return;
     FMotion& Motion = Playing.Add(Step.member);
     Motion.Step = Step;
@@ -421,7 +462,7 @@ void ARpgBoard::BeginMotion(const FMotionStep& Step)
     Motion.End = At(Step.to, Motion.Start.Z);
     if (Step.kind == FMotionStep::Kind::Swing)
     {
-        const AStaticMeshActor* Target = Figures.FindRef(Step.target);
+        const AActor* Target = Figures.FindRef(Step.target);
         const FVector Toward = IsValid(Target) ? Target->GetActorLocation() - Motion.Start : Motion.End - Motion.Start;
         Motion.End = Toward.GetSafeNormal2D();
         if (!Motion.End.IsNearlyZero()) Figure->SetActorRotation(Motion.End.Rotation());
@@ -434,7 +475,7 @@ void ARpgBoard::Tick(float DeltaSeconds)
     for (auto It = Playing.CreateIterator(); It; ++It)
     {
         FMotion& Motion = It.Value();
-        AStaticMeshActor* Figure = Figures.FindRef(It.Key());
+        AActor* Figure = Figures.FindRef(It.Key());
         if (!IsValid(Figure))
         {
             It.RemoveCurrent();
@@ -472,7 +513,7 @@ bool ARpgBoard::FigureUnder(const FVector& Origin, const FVector& Direction, FSt
     {
         if (!IsValid(Pair.Value.Get())) continue;
         FHitResult Hit;
-        if (Pair.Value->GetStaticMeshComponent()->LineTraceComponent(Hit, Origin, End, FCollisionQueryParams()) && Hit.Distance < Nearest)
+        if (MeshOf(Pair.Value.Get())->LineTraceComponent(Hit, Origin, End, FCollisionQueryParams()) && Hit.Distance < Nearest)
         {
             Nearest = Hit.Distance;
             Member = Pair.Key;

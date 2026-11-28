@@ -6,7 +6,6 @@
 #include "RpgBoard.generated.h"
 
 class ACameraActor;
-class AStaticMeshActor;
 class UProceduralMeshComponent;
 
 enum class ERpgSide : uint8 { Player, Npc, Monster };
@@ -67,12 +66,12 @@ private:
     TMap<FString, FMotion> Playing;
     UPROPERTY() TObjectPtr<UProceduralMeshComponent> Floor;
     UPROPERTY() TObjectPtr<ACameraActor> ViewCamera;
-    UPROPERTY() TObjectPtr<AStaticMeshActor> Marker;
+    UPROPERTY() TObjectPtr<AActor> Marker;
     TMap<FString, ERpgSide> Sides;
     TMap<FString, FString> Words;
     TMap<FString, bool> Downed;
     FBox FloorBounds = FBox(ForceInit);
-    UPROPERTY() TArray<TObjectPtr<AStaticMeshActor>> Walls;
-    UPROPERTY() TObjectPtr<AStaticMeshActor> Ground;
-    UPROPERTY() TMap<FString, TObjectPtr<AStaticMeshActor>> Figures;
+    UPROPERTY() TArray<TObjectPtr<AActor>> Walls;
+    UPROPERTY() TObjectPtr<AActor> Ground;
+    UPROPERTY() TMap<FString, TObjectPtr<AActor>> Figures;
 };
