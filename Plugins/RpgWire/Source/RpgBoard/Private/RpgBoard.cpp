@@ -5,6 +5,11 @@
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "CollisionQueryParams.h"
+#include "Components/CapsuleComponent.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "Misc/Paths.h"
+#include "UObject/UObjectGlobals.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Engine/HitResult.h"
@@ -311,7 +316,8 @@ void ARpgBoard::ShotSubjects(TArray<FRpgShotSubject>& Out) const
         if (!IsValid(Pair.Value.Get())) continue;
         const ERpgSide* Side = Sides.Find(Pair.Key);
         if (!Side) continue;
-        Out.Add({Pair.Key, Pair.Value->GetComponentsBoundingBox(true), false, RpgLook::HexOf(RpgLook::FigureColour(*Side, Words.FindRef(Pair.Key), Pair.Key == Marked, Downed.FindRef(Pair.Key)))});
+        Out.Add({Pair.Key, Pair.Value->GetComponentsBoundingBox(true), false,
+            NativeFigures.Contains(Pair.Key) ? FString(TEXT("NATIVE")) : RpgLook::HexOf(RpgLook::FigureColour(*Side, Words.FindRef(Pair.Key), Pair.Key == Marked, Downed.FindRef(Pair.Key)))});
     }
     auto OccupiedAt = [this](const FIntPoint& Cell)
     {
@@ -333,13 +339,47 @@ void ARpgBoard::ShotSubjects(TArray<FRpgShotSubject>& Out) const
 
 void ARpgBoard::PlaceFigure(const FString& Member, ERpgSide Side, const FIntPoint& Cell)
 {
+    PlaceFigure(Member, Side, Cell, nullptr);
+}
+
+AActor* ARpgBoard::SpawnNative(UClass* Class, const FVector& Location) const
+{
+    if (!Class || !Class->IsChildOf(ACharacter::StaticClass())) return nullptr;
+    FActorSpawnParameters Parameters;
+    Parameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    ACharacter* Figure = GetWorld()->SpawnActor<ACharacter>(Class, Location, FRotator(0, RpgLook::kKingdomCameraFacingYaw, 0), Parameters);
+    if (!Figure) return nullptr;
+    Figure->GetCharacterMovement()->DisableMovement(); // RpgMotion owns board transforms.
+    FVector Placed = Location;
+    Placed.Z = Figure->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+    Figure->SetActorLocation(Placed, false, nullptr, ETeleportType::TeleportPhysics);
+    return Figure;
+}
+
+void ARpgBoard::PlaceFigure(const FString& Member, ERpgSide Side, const FIntPoint& Cell, const rpgwire::Member* Identity)
+{
     if (HasFigure(Member)) return;
+    const FString Asset = Manifest && Identity ? Manifest->StandingFor(*Identity) : FString();
+    if (!Asset.IsEmpty())
+    {
+        const FString ClassPath = Asset + TEXT(".") + FPaths::GetBaseFilename(Asset) + TEXT("_C");
+        if (AActor* Figure = SpawnNative(StaticLoadClass(AActor::StaticClass(), nullptr, ClassPath), At(Cell, 0.0)))
+        {
+            Figures.Add(Member, Figure);
+            NativeFigures.Add(Member);
+            SetFigureSide(Member, Side);
+            UE_LOG(LogRpgPlay, Display, TEXT("FIGURE %s native=%s"), *Member, *Asset);
+            UE_LOG(LogRpgPlay, Display, TEXT("FOOTING %s capsule=%.1f yaw=%.1f"), *Member, Figure->GetActorLocation().Z, Figure->GetActorRotation().Yaw);
+            return;
+        }
+    }
     if (AActor* Figure = SpawnShape(GetWorld(), At(Cell, 50.0)))
     {
         Figures.Add(Member, Figure);
         SetFigureSide(Member, Side);
         const TCHAR* Shape = Side == ERpgSide::Player ? TEXT("cylinder") : Side == ERpgSide::Monster ? TEXT("box") : TEXT("sphere");
         UE_LOG(LogRpgPlay, Display, TEXT("SHAPE %s %s"), *Member, Shape);
+        UE_LOG(LogRpgPlay, Display, TEXT("FIGURE %s shape"), *Member);
     }
 }
 
@@ -350,6 +390,7 @@ void ARpgBoard::RemoveFigure(const FString& Member)
     AActor* Figure = Figures.FindRef(Member);
     if (IsValid(Figure)) Figure->Destroy();
     Figures.Remove(Member);
+    NativeFigures.Remove(Member);
     Sides.Remove(Member);
     Words.Remove(Member);
     Downed.Remove(Member);
@@ -376,7 +417,7 @@ void ARpgBoard::ApplyColour(const FString& Member)
 {
     AActor* Figure = Figures.FindRef(Member);
     const ERpgSide* Side = Sides.Find(Member);
-    if (!IsValid(Figure) || !Side) return;
+    if (!IsValid(Figure) || !Side || NativeFigures.Contains(Member)) return;
     const FLinearColor Colour = RpgLook::FigureColour(*Side, Words.FindRef(Member), Member == Marked, Downed.FindRef(Member));
     ApplyShape(*Figure, FigureShape(*Side), Colour);
     UE_LOG(LogRpgPlay, Display, TEXT("COLOUR %s %s"), *Member, *RpgLook::HexOf(Colour));
@@ -522,7 +563,9 @@ bool ARpgBoard::FigureUnder(const FVector& Origin, const FVector& Direction, FSt
     {
         if (!IsValid(Pair.Value.Get())) continue;
         FHitResult Hit;
-        if (MeshOf(Pair.Value.Get())->LineTraceComponent(Hit, Origin, End, FCollisionQueryParams()) && Hit.Distance < Nearest)
+        UPrimitiveComponent* Surface = MeshOf(Pair.Value.Get());
+        if (auto* Character = Cast<ACharacter>(Pair.Value.Get())) Surface = Character->GetCapsuleComponent();
+        if (Surface && Surface->LineTraceComponent(Hit, Origin, End, FCollisionQueryParams()) && Hit.Distance < Nearest)
         {
             Nearest = Hit.Distance;
             Member = Pair.Key;
@@ -552,6 +595,7 @@ void ARpgBoard::Clear()
         if (IsValid(Pair.Value.Get())) Pair.Value->Destroy();
     }
     Figures.Reset();
+    NativeFigures.Reset();
     Sides.Reset();
     Words.Reset();
     Downed.Reset();

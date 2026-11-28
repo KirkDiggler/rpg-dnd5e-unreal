@@ -69,6 +69,13 @@ namespace
 
     using FRoster = TArray<TPair<FString, ERpgSide>>;
 
+    const rpgwire::Member* FindIdentity(const std::vector<rpgwire::Member>& Members, const FString& Id)
+    {
+        const std::string Key = Wire(Id);
+        for (const auto& Member : Members) if (Member.id == Key) return &Member;
+        return nullptr;
+    }
+
     FRoster ReadRoster(const std::vector<rpgwire::Member>& Members)
     {
         FRoster Roster;
@@ -146,6 +153,8 @@ struct URpgPlay::FState
     // These read models belong to the game thread after marshal.
     rpgwire::Afforded Afforded_;
     FRoster Roster;
+    std::vector<rpgwire::Member> Identities;
+    TArray<FString> PendingJoins;
     TArray<FRpgWall> Walls;
     TMap<FString, TPair<FString, bool>> Words;
     bool bViewBusy = false;
@@ -256,7 +265,7 @@ void URpgPlay::Join(const FRpgTarget& Target)
                 });
             });
         AsyncTask(ENamedThreads::GameThread, [Weak, Session = MoveTemp(Session), Stream = MoveTemp(Stream),
-            Members = MoveTemp(Members), Atlas = MoveTemp(Atlas), Offered = MoveTemp(Offered)]
+            Members = MoveTemp(Members), Atlas = MoveTemp(Atlas), Offered = MoveTemp(Offered)]() mutable
         {
             URpgPlay* Play = Weak.Get();
             if (!Play || !Play->bJoining)
@@ -274,6 +283,7 @@ void URpgPlay::Join(const FRpgTarget& Target)
             Joined.Walls = ReadWalls(Atlas);
             ReportRoster(Joined.Roster);
             ReportFactions(Members);
+            Joined.Identities = MoveTemp(Members);
             UE_LOG(LogRpgPlay, Display, TEXT("ATLAS cells=%d placed=%d"), Joined.KnownCells.Num(), static_cast<int32>(Atlas.placed.size()));
             Play->bJoined = true;
             Play->TryReady();
@@ -300,7 +310,11 @@ void URpgPlay::TryReady()
     Board->BuildFloor(State->KnownCells, State->Start);
     Board->BuildWalls(State->Walls);
     Board->BuildGround();
-    for (const auto& Member : State->Roster) { Board->PlaceFigure(Member.Key, Member.Value, *Board->CellOf(Member.Key)); ApplyCachedWord(Member.Key); }
+    for (const auto& Member : State->Roster)
+    {
+        Board->PlaceFigure(Member.Key, Member.Value, *Board->CellOf(Member.Key), FindIdentity(State->Identities, Member.Key));
+        ApplyCachedWord(Member.Key);
+    }
     Board->MoveMarkerTo(TurnMember);
     bJoining = false;
     bReady = true;
@@ -363,31 +377,16 @@ void URpgPlay::ApplySight(const TArray<FString>& Gained, const TArray<FString>& 
 {
     for (const FString& Member : Lost)
     {
+        State->PendingJoins.Remove(Member);
         if (!Board->HasFigure(Member)) continue;
         Board->RemoveFigure(Member);
         UE_LOG(LogRpgPlay, Display, TEXT("LOST %s"), *Member);
     }
-    const FString Observer = Read(State->Options.member);
     for (const FString& Member : Gained)
     {
         if (Board->HasFigure(Member)) continue;
-        if (const FIntPoint* Cell = Board->CellOf(Member))
-        {
-            UE_LOG(LogRpgPlay, Display, TEXT("SIGHT observer=%s gained=%s"), *Observer, *Member);
-            Board->PlaceFigure(Member, ERpgSide::Npc, *Cell);
-            if (Board->HasFigure(Member))
-            {
-                UE_LOG(LogRpgPlay, Display, TEXT("JOINED %s %d %d"), *Member, Cell->X, Cell->Y);
-                ApplyCachedWord(Member);
-                if (OnFirstJoin)
-                {
-                    auto Callback = MoveTemp(OnFirstJoin);
-                    OnFirstJoin = nullptr;
-                    Callback();
-                }
-                State->bReadRoster = true;
-            }
-        }
+        State->PendingJoins.AddUnique(Member);
+        State->bReadRoster = true;
     }
     if (bReady && (!Gained.IsEmpty() || !Lost.IsEmpty())) RefreshView();
 }
@@ -411,7 +410,7 @@ void URpgPlay::RefreshBoard()
         const bool GotAtlas = WantAtlas && Active->Session->Atlas(Options.session, Options.member, &Atlas, &AtlasError);
         AsyncTask(ENamedThreads::GameThread, [Weak, GotRoster, GotAtlas, Roster = ReadRoster(Members), Cells = ReadCells(Atlas),
             Start = FIntPoint(Atlas.start.first, Atlas.start.second), Placed = Atlas.placed.size(), Walls = ReadWalls(Atlas), Members = MoveTemp(Members),
-            RosterWhy = Read(RosterError), AtlasWhy = Read(AtlasError)]
+            RosterWhy = Read(RosterError), AtlasWhy = Read(AtlasError)]() mutable
         {
             URpgPlay* Play = Weak.Get();
             if (!Play || Play->bLeaving || !IsValid(Play->Board)) return;
@@ -419,7 +418,29 @@ void URpgPlay::RefreshBoard()
             {
                 ReportRoster(Roster);
                 ReportFactions(Members);
-                for (const auto& Member : Roster) Play->Board->SetFigureSide(Member.Key, Member.Value);
+                Play->State->Identities = MoveTemp(Members);
+                bool Joined = false;
+                const FString Observer = Read(Play->State->Options.member);
+                for (const auto& Member : Roster)
+                {
+                    Play->Board->SetFigureSide(Member.Key, Member.Value);
+                    const FIntPoint* Cell = Play->Board->CellOf(Member.Key);
+                    if (!Cell || !Play->State->PendingJoins.Remove(Member.Key) || Play->Board->HasFigure(Member.Key)) continue;
+                    UE_LOG(LogRpgPlay, Display, TEXT("SIGHT observer=%s gained=%s"), *Observer, *Member.Key);
+                    Play->Board->PlaceFigure(Member.Key, Member.Value, *Cell, FindIdentity(Play->State->Identities, Member.Key));
+                    if (Play->Board->HasFigure(Member.Key))
+                    {
+                        UE_LOG(LogRpgPlay, Display, TEXT("JOINED %s %d %d"), *Member.Key, Cell->X, Cell->Y);
+                        Play->ApplyCachedWord(Member.Key);
+                        Joined = true;
+                    }
+                }
+                if (Joined && Play->OnFirstJoin)
+                {
+                    auto Callback = MoveTemp(Play->OnFirstJoin);
+                    Play->OnFirstJoin = nullptr;
+                    Callback();
+                }
             }
             if (GotAtlas)
             {

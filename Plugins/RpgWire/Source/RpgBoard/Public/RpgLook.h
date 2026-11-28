@@ -10,6 +10,8 @@ inline const FLinearColor kDowned = FLinearColor::FromSRGBColor(FColor(0x66,0x66
 inline const FLinearColor kStone{0.55f,0.54f,0.50f}, kWood{0.30f,0.19f,0.10f};
 inline const FLinearColor kFloor = FLinearColor::FromSRGBColor(FColor(0x9E,0xA3,0xA8)), kFloorStart = FLinearColor::FromSRGBColor(FColor(0xC9,0xA6,0x6B));
 inline constexpr double kSqrt3 = 1.7320508075688772, kFeetPerHex = 5.0, kCmPerFoot = kSqrt3 / kFeetPerHex * 100.0;
+// The board camera is on the -Y side; face the Kingdom actor toward it.
+inline constexpr double kKingdomCameraFacingYaw = -90.0;
 RPGBOARD_API FLinearColor FigureColour(ERpgSide Side, const FString& Word, bool Active, bool Downed);
 RPGBOARD_API FString HexOf(const FLinearColor& Colour);
 RPGBOARD_API FVector BoxCentre(double OriginXFeet, double OriginYFeet, double ElevationFeet, double HeightFeet);

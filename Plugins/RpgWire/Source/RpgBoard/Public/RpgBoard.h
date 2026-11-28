@@ -7,6 +7,7 @@
 
 class ACameraActor;
 class FRpgManifest;
+namespace rpgwire { struct Member; }
 class UProceduralMeshComponent;
 
 enum class ERpgSide : uint8 { Player, Npc, Monster };
@@ -47,6 +48,9 @@ public:
 private:
     friend class URpgPlay;
     TSharedPtr<const FRpgManifest> Manifest;
+    void PlaceFigure(const FString& Member, ERpgSide Side, const FIntPoint& Cell, const rpgwire::Member* Identity);
+    AActor* SpawnNative(UClass* Class, const FVector& Location) const;
+    TSet<FString> NativeFigures;
     struct FMotion
     {
         FMotionStep Step;
