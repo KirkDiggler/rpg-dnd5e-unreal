@@ -142,7 +142,7 @@ namespace
         TArray<FColor> Colours;
         Colours.Init(Colour.ToFColor(true), Shape.Vertices.Num());
         Mesh->CreateMeshSection(0, Shape.Vertices, Shape.Triangles, Shape.Normals, {}, Colours, {}, Collision);
-        Mesh->SetMaterial(0, LoadObject<UMaterial>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial")));
+        Mesh->SetMaterial(0, LoadObject<UMaterial>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorViewMode_ColorOnly.VertexColorViewMode_ColorOnly")));
     }
     AActor* SpawnShape(UWorld* World, const FVector& Location)
     {
@@ -261,9 +261,9 @@ void ARpgBoard::BuildFloor(const TArray<FIntPoint>& InCells, const FIntPoint& In
             Triangles.Append({Base, Base + Corner, Base + Corner + 1, Base, Base + Corner + 1, Base + Corner});
         }
     }
-    UMaterial* FloorMaterial = LoadObject<UMaterial>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+    UMaterial* FloorMaterial = LoadObject<UMaterial>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorViewMode_ColorOnly.VertexColorViewMode_ColorOnly"));
     Floor->SetMaterial(0, FloorMaterial);
-    UE_LOG(LogRpgPlay, Display, TEXT("FLOOR cells=%d material=%s"), KnownCells.Num(), FloorMaterial ? TEXT("VertexColorMaterial") : TEXT("default"));
+    UE_LOG(LogRpgPlay, Display, TEXT("FLOOR cells=%d material=%s"), KnownCells.Num(), FloorMaterial ? TEXT("VertexColorViewMode_ColorOnly") : TEXT("default"));
     Floor->CreateMeshSection(0, Vertices, Triangles, Normals, {}, Colors, {}, true);
     FloorBounds = CellBox.IsValid ? CellBox.ExpandBy(kRadius) : FBox(ForceInit);
     RefitCamera();

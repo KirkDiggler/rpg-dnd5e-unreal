@@ -106,7 +106,7 @@ if [ "$MODE" = --play ]; then
   exit "$FAILS"
 fi
 
-check 'floor material' matches 'FLOOR cells=[0-9]+ material=VertexColorMaterial'
+check 'floor material' matches 'FLOOR cells=[0-9]+ material=VertexColorViewMode_ColorOnly'
 check 'no missing object' bash -c '! grep -aq "Failed to find object" "$1"' _ "$LOG"
 check 'ground' logged 'GROUND ok'
 check "process exited within timeout (status $RESULT)" test "$RESULT" -eq 0
