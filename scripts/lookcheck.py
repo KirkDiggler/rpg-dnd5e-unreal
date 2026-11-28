@@ -10,15 +10,23 @@ def main():
         print('usage: lookcheck.py <frame.png> <run-log>', file=sys.stderr)
         return 1
     pattern = re.compile(r'\bPIXEL (\S+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (#[0-9A-Fa-f]{6})\b')
+    colour_pattern = re.compile(r'\bCOLOUR (\S+) #[0-9A-Fa-f]{6}\b')
     with open(sys.argv[2], encoding='utf-8', errors='replace') as log:
-        subjects = [m.groups() for line in log if (m := pattern.search(line))]
+        lines = list(log)
+    subjects = [m.groups() for line in lines if (m := pattern.search(line))]
+    members = {m.group(1) for line in lines if (m := colour_pattern.search(line))}
+    missing = members - {subject[0] for subject in subjects}
+    for member in sorted(missing):
+        print(f'FAIL palette {member}: no PIXEL')
+    failed = bool(missing)
     if not subjects:
         print('FAIL palette no-subjects: 0')
         return 1
-    failed = False
     with Image.open(sys.argv[1]) as frame:
         image = frame.convert('RGB')
         for name, x0, y0, x1, y1, colour in subjects:
+            if name == 'start':
+                continue
             x0, y0, x1, y1 = map(int, (x0, y0, x1, y1))
             target = tuple(int(colour[i:i + 2], 16) for i in (1, 3, 5))
             count = 0

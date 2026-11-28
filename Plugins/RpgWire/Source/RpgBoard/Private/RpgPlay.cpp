@@ -102,6 +102,11 @@ namespace
             if (Span) Parent.resize(Cut);
             auto Info = Atlas.authored.find(Parent);
             if (Info == Atlas.authored.end() && !Atlas.dungeon_key.empty()) Info = Atlas.authored.find(Atlas.dungeon_key + "/" + Parent);
+            if (Info == Atlas.authored.end())
+            {
+                const auto Slash = Parent.rfind('/');
+                Info = Atlas.authored.find(Slash == std::string::npos ? Parent : Parent.substr(Slash + 1));
+            }
             if (Info == Atlas.authored.end()) continue;
             if (!Info->second.door && (Span != (Info->second.openings > 0))) continue;
             FRpgWall Wall;

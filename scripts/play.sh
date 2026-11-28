@@ -57,9 +57,9 @@ matches() { grep -aqE -- "LogRpgPlay: Display: $1" "$LOG"; }
 not_logged() { ! logged "$1"; }
 counted() { [ "$(grep -acF -- "LogRpgPlay: Display: $1" "$LOG")" -eq "$2" ]; }
 tomb_walls_match_atlas() {
-  awk '/LogRpgPlay: Display: ATLAS cells=/ { if (match($0, /placed=[0-9]+/)) { n=substr($0,RSTART+7,RLENGTH-7)+0; seen=1 } }
-       /LogRpgPlay: Display: WALLS drawn=/ && seen { if (match($0, /drawn=[0-9]+/)) { w=substr($0,RSTART+6,RLENGTH-6)+0; if ((n==0 && w==0) || (n>0 && w>0)) ok=1; seen=0 } }
-       END { exit !ok }' "$LOG"
+  awk '/LogRpgPlay: Display: ATLAS cells=/ { if (seen) bad=1; if (match($0, /placed=[0-9]+/)) { n=substr($0,RSTART+7,RLENGTH-7)+0; seen=1 } else bad=1 }
+       /LogRpgPlay: Display: WALLS drawn=/ && seen { if (match($0, /drawn=[0-9]+/)) { w=substr($0,RSTART+6,RLENGTH-6)+0; if (!((n==0 && w==0) || (n>0 && w>0))) bad=1; pairs++ } else bad=1; seen=0 }
+       END { exit (bad || seen || !pairs) }' "$LOG"
 }
 after_end_turn() {
   awk -v wanted="$1" '/LogRpgPlay: Display: VERB end-turn / { ended=1 } ended && index($0, "LogRpgPlay: Display: " wanted) { found=1 } END { exit !found }' "$LOG"
@@ -150,7 +150,7 @@ case "$SCENARIO" in
   castle)
     check 'alice active colour' logged 'COLOUR alice #63B3ED'
     check 'pedlar colour' logged 'COLOUR pedlar #E53E3E'
-    check 'walls drawn' matches 'WALLS drawn=[1-9][0-9]*'
+    check 'walls drawn' matches 'WALLS drawn=7\r?$'
     check 'nonempty roster' matches 'ROSTER n=[1-9][0-9]* '
     check 'pedlar is monster' logged 'FIGURE pedlar side=monster'
     check 'nonempty atlas' matches 'ATLAS cells=[1-9][0-9]* '

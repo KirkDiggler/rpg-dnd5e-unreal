@@ -107,12 +107,12 @@ struct Member
 
 struct Sighting
 {
-    std::string id;
+    std::string id;      // the subject
     std::string name;
     Member::Kind kind = Member::Kind::Unspecified;
-    std::string stance;
-    Cell cell;
-    int standing = 0;
+    std::string stance;  // the engine's word, or empty: no word, never neutral
+    Cell cell;           // rpgwire::Cell — using Cell = std::pair<int, int>, RpgSession.h:34
+    int standing = 0;    // dnd5e.api.session.v1alpha1.Standing: 1 up, 2 downed
 };
 
 class RPGWIRE_API Session

@@ -314,6 +314,7 @@ void ARpgBoard::ShotSubjects(TArray<FRpgShotSubject>& Out) const
         return false;
     };
     auto CellBox = [](const FIntPoint& Cell) { const FVector Point = At(Cell, 2.0); return FBox(Point - FVector(1, 1, 0), Point + FVector(1, 1, 0)); };
+    Out.Add({TEXT("start"), CellBox(StartCell), true, RpgLook::HexOf(RpgLook::kFloorStart)});
     int Added = 0;
     for (const FIntPoint& Cell : KnownCells)
     {
