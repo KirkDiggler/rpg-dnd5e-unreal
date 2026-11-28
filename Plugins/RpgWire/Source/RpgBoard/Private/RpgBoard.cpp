@@ -10,6 +10,7 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Misc/Paths.h"
+#include "UObject/Package.h"
 #include "UObject/UObjectGlobals.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
