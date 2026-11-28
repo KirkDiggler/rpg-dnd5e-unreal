@@ -30,6 +30,7 @@ Plugins/RpgWire/Source/ThirdParty/
 
 # Licensed content, mounted from rpg-game-assets by scripts/mount-content.sh (a link or a copy)
 Plugins/RpgGameAssets
+/Content/PolygonFantasyKingdom
 
 # Evidence frames: licensed models may be in them; they stay local
 evidence/

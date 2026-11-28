@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
-# Mounts the licensed content plugin, if rpg-game-assets is checked out beside
-# this repository and holds one: its unreal/RpgGameAssets is linked at
-# Plugins/RpgGameAssets (ignored by git). The project builds and tests without
-# it; nothing licensed is ever committed here (design, R6).
+# Link the licensed native Kingdom tree at its original /Game package root.
+# The project also builds without it; nothing licensed is committed here (R6).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # Beside the main checkout, whether this is the checkout itself or a worktree.
-MAIN="$(cd "$(git -C "$ROOT" rev-parse --git-common-dir)/.." 2>/dev/null && pwd || echo "$ROOT")"
-SRC="${RPG_GAME_ASSETS_DIR:-$MAIN/../rpg-game-assets}/unreal/RpgGameAssets"
-DEST="$ROOT/Plugins/RpgGameAssets"
+COMMON="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)"
+MAIN="$(cd "$COMMON/.." && pwd)"
+SRC="${RPG_GAME_ASSETS_DIR:-$MAIN/../rpg-game-assets}/unreal/RpgGameAssets/Content/PolygonFantasyKingdom"
+DEST="$ROOT/Content/PolygonFantasyKingdom"
 
 if [ ! -d "$SRC" ]; then
-  echo "mount-content: no content plugin at $SRC; building without one"
+  echo "mount-content: no Kingdom content at $SRC; building without one"
   exit 0
 fi
-rm -rf "$DEST"
-ln -s "$SRC" "$DEST"
-echo "mount-content: $SRC -> Plugins/RpgGameAssets"
+if [ -e "$DEST" ] && [ ! -L "$DEST" ]; then
+  echo "mount-content: refusing to replace non-symlink $DEST" >&2
+  exit 1
+fi
+mkdir -p "$ROOT/Content"
+ln -sfnT "$(cd "$SRC" && pwd)" "$DEST"
+echo "mount-content: $SRC -> Content/PolygonFantasyKingdom"
