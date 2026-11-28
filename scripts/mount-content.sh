@@ -10,6 +10,12 @@ MAIN="$(cd "$COMMON/.." && pwd)"
 SRC="${RPG_GAME_ASSETS_DIR:-$MAIN/../rpg-game-assets}/unreal/RpgGameAssets/Content/PolygonFantasyKingdom"
 DEST="$ROOT/Content/PolygonFantasyKingdom"
 
+# The previous mount used a content plugin. Remove only its old symlink.
+LEGACY="$ROOT/Plugins/RpgGameAssets"
+if [ -L "$LEGACY" ]; then
+  unlink "$LEGACY"
+fi
+
 if [ ! -d "$SRC" ]; then
   echo "mount-content: no Kingdom content at $SRC; building without one"
   exit 0
