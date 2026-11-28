@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check projected scene subjects against the corresponding screenshot pixels."""
+"""Check projected scene subjects against their screenshot footprints."""
 import re
 import sys
 from PIL import Image
@@ -7,9 +7,9 @@ from PIL import Image
 
 def main():
     if len(sys.argv) != 3:
-        print('usage: lookcheck.py <frame.png> <pixel-log>', file=sys.stderr)
+        print('usage: lookcheck.py <frame.png> <run-log>', file=sys.stderr)
         return 1
-    pattern = re.compile(r'\bPIXEL (\S+) (-?\d+) (-?\d+) (#[0-9A-Fa-f]{6})\b')
+    pattern = re.compile(r'\bPIXEL (\S+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (#[0-9A-Fa-f]{6})\b')
     with open(sys.argv[2], encoding='utf-8', errors='replace') as log:
         subjects = [m.groups() for line in log if (m := pattern.search(line))]
     if not subjects:
@@ -18,14 +18,14 @@ def main():
     failed = False
     with Image.open(sys.argv[1]) as frame:
         image = frame.convert('RGB')
-        for name, sx, sy, colour in subjects:
-            x, y = int(sx), int(sy)
+        for name, x0, y0, x1, y1, colour in subjects:
+            x0, y0, x1, y1 = map(int, (x0, y0, x1, y1))
             target = tuple(int(colour[i:i + 2], 16) for i in (1, 3, 5))
             count = 0
-            if x >= 4 and y >= 4 and x + 4 < image.width and y + 4 < image.height:
-                for py in range(y - 4, y + 5):
-                    for px in range(x - 4, x + 5):
-                        pixel = image.getpixel((px, py))
+            if 0 <= x0 <= x1 < image.width and 0 <= y0 <= y1 < image.height:
+                for y in range(y0, y1 + 1):
+                    for x in range(x0, x1 + 1):
+                        pixel = image.getpixel((x, y))
                         count += all(abs(pixel[i] - target[i]) <= 16 for i in range(3))
             print(f'palette {name} {colour}: {count}')
             if count < 20:

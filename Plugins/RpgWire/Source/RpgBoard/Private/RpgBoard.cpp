@@ -234,7 +234,7 @@ void ARpgBoard::RefitCamera()
         Camera->PostProcessSettings.bOverride_AutoExposureMethod = true;
         Camera->PostProcessSettings.AutoExposureMethod = AEM_Manual;
         Camera->PostProcessSettings.bOverride_AutoExposureBias = true;
-        Camera->PostProcessSettings.AutoExposureBias = 3.0f;
+        Camera->PostProcessSettings.AutoExposureBias = 7.62f;
     }
 }
 
@@ -246,20 +246,22 @@ void ARpgBoard::ShotSubjects(TArray<FRpgShotSubject>& Out) const
         if (!IsValid(Pair.Value.Get())) continue;
         const ERpgSide* Side = Sides.Find(Pair.Key);
         if (!Side) continue;
-        Out.Add({Pair.Key, Pair.Value->GetActorLocation(), RpgLook::HexOf(RpgLook::FigureColour(*Side, Words.FindRef(Pair.Key), Pair.Key == Marked, Downed.FindRef(Pair.Key)))});
+        Out.Add({Pair.Key, Pair.Value->GetComponentsBoundingBox(true), false, RpgLook::HexOf(RpgLook::FigureColour(*Side, Words.FindRef(Pair.Key), Pair.Key == Marked, Downed.FindRef(Pair.Key)))});
     }
-    Out.Add({TEXT("start"), At(StartCell, 2.0), RpgLook::HexOf(RpgLook::kFloorStart)});
+    auto OccupiedAt = [this](const FIntPoint& Cell)
+    {
+        for (const auto& Figure : Figures)
+            if (IsValid(Figure.Value.Get()) && CellAt(FVector2D(Figure.Value->GetActorLocation())) == Cell) return true;
+        return false;
+    };
+    auto CellBox = [](const FIntPoint& Cell) { const FVector Point = At(Cell, 2.0); return FBox(Point - FVector(1, 1, 0), Point + FVector(1, 1, 0)); };
+    if (!OccupiedAt(StartCell)) Out.Add({TEXT("start"), CellBox(StartCell), true, RpgLook::HexOf(RpgLook::kFloorStart)});
     int Added = 0;
     for (const FIntPoint& Cell : KnownCells)
     {
         if (Cell == StartCell) continue;
-        bool Occupied = false;
-        for (const auto& Figure : Figures)
-        {
-            if (IsValid(Figure.Value.Get()) && CellAt(FVector2D(Figure.Value->GetActorLocation())) == Cell) { Occupied = true; break; }
-        }
-        if (Occupied) continue;
-        Out.Add({FString::Printf(TEXT("cell-%d-%d"), Cell.X, Cell.Y), At(Cell, 2.0), RpgLook::HexOf(RpgLook::kFloor)});
+        if (OccupiedAt(Cell)) continue;
+        Out.Add({FString::Printf(TEXT("cell-%d-%d"), Cell.X, Cell.Y), CellBox(Cell), true, RpgLook::HexOf(RpgLook::kFloor)});
         if (++Added == 2) break;
     }
 }

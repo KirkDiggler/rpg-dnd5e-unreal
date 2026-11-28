@@ -31,9 +31,23 @@ namespace
         Board->ShotSubjects(Subjects);
         for (const FRpgShotSubject& Subject : Subjects)
         {
-            FVector2D Screen(-1, -1);
-            if (!Controller || !Controller->ProjectWorldLocationToScreen(Subject.World, Screen)) Screen = FVector2D(-1, -1);
-            UE_LOG(LogRpgPlay, Display, TEXT("PIXEL %s %d %d %s"), *Subject.What, static_cast<int32>(FMath::RoundToInt(Screen.X)), static_cast<int32>(FMath::RoundToInt(Screen.Y)), *Subject.Hex);
+            FBox2D ScreenBox(ForceInit);
+            bool Projected = Controller && Subject.Box.IsValid;
+            for (int32 Corner = 0; Corner < 8 && Projected; ++Corner)
+            {
+                const FVector WorldPoint((Corner & 1) ? Subject.Box.Max.X : Subject.Box.Min.X,
+                    (Corner & 2) ? Subject.Box.Max.Y : Subject.Box.Min.Y,
+                    (Corner & 4) ? Subject.Box.Max.Z : Subject.Box.Min.Z);
+                FVector2D Screen;
+                if (!Controller->ProjectWorldLocationToScreen(WorldPoint, Screen)) Projected = false;
+                else ScreenBox += Screen;
+            }
+            if (Projected && Subject.Point) ScreenBox = ScreenBox.ExpandBy(4.0);
+            const int32 X0 = Projected ? FMath::FloorToInt(ScreenBox.Min.X) : -1;
+            const int32 Y0 = Projected ? FMath::FloorToInt(ScreenBox.Min.Y) : -1;
+            const int32 X1 = Projected ? FMath::CeilToInt(ScreenBox.Max.X) : -1;
+            const int32 Y1 = Projected ? FMath::CeilToInt(ScreenBox.Max.Y) : -1;
+            UE_LOG(LogRpgPlay, Display, TEXT("PIXEL %s %d %d %d %d %s"), *Subject.What, X0, Y0, X1, Y1, *Subject.Hex);
         }
         FScreenshotRequest::RequestScreenshot(Path, false, false);
         UE_LOG(LogRpgPlay, Display, TEXT("SHOT %s"), *Path);
@@ -67,7 +81,7 @@ void ARpgGameMode::StartPlay()
     UWorld* World = GetWorld();
     if (ADirectionalLight* Sun = World->SpawnActor<ADirectionalLight>(FVector(0.0, 0.0, 500.0), FRotator(-48.0, 32.0, 0.0)))
     {
-        Sun->GetLightComponent()->SetIntensity(600.0f);
+        Sun->GetLightComponent()->SetIntensity(6.0f);
     }
     if (ASkyLight* Sky = World->SpawnActor<ASkyLight>(FVector(0.0, 0.0, 300.0), FRotator::ZeroRotator))
     {
