@@ -153,7 +153,9 @@ namespace
         Actor->AddInstanceComponent(Mesh);
         Mesh->SetMobility(EComponentMobility::Movable);
         Mesh->bUseComplexAsSimpleCollision = true;
+        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
         Mesh->RegisterComponent();
+        Actor->SetActorLocation(Location);
         return Actor;
     }
     FShape FigureShape(ERpgSide Side)
