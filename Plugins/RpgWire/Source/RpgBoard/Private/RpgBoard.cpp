@@ -140,7 +140,7 @@ namespace
         auto* Mesh = MeshOf(&Actor);
         if (!Mesh) return;
         TArray<FColor> Colours;
-        Colours.Init(Colour.ToFColor(true), Shape.Vertices.Num());
+        Colours.Init(Colour.ToFColor(false), Shape.Vertices.Num());
         Mesh->CreateMeshSection(0, Shape.Vertices, Shape.Triangles, Shape.Normals, {}, Colours, {}, Collision);
         Mesh->SetMaterial(0, LoadObject<UMaterial>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorViewMode_ColorOnly.VertexColorViewMode_ColorOnly")));
     }
@@ -248,7 +248,7 @@ void ARpgBoard::BuildFloor(const TArray<FIntPoint>& InCells, const FIntPoint& In
         const FVector Centre = At(Cell, 0.0);
         CellBox += Centre;
         const int32 Base = Vertices.Num();
-        const FColor Tint = (Cell == StartCell ? RpgLook::kFloorStart : RpgLook::kFloor).ToFColor(true);
+        const FColor Tint = (Cell == StartCell ? RpgLook::kFloorStart : RpgLook::kFloor).ToFColor(false);
         for (int32 Corner = 0; Corner < 6; ++Corner)
         {
             const double Angle = FMath::DegreesToRadians(30.0 + 60.0 * Corner);
