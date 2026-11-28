@@ -234,7 +234,7 @@ void ARpgBoard::RefitCamera()
         Camera->PostProcessSettings.bOverride_AutoExposureMethod = true;
         Camera->PostProcessSettings.AutoExposureMethod = AEM_Manual;
         Camera->PostProcessSettings.bOverride_AutoExposureBias = true;
-        Camera->PostProcessSettings.AutoExposureBias = 6.0f;
+        Camera->PostProcessSettings.AutoExposureBias = 3.0f;
     }
 }
 
