@@ -39,3 +39,5 @@ evidence/
 .superpowers/
 __pycache__/
 *.pyc
+
+/Config/RpgGameAssetsManifest.json
