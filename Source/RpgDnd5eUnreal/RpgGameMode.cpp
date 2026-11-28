@@ -67,7 +67,7 @@ void ARpgGameMode::StartPlay()
     UWorld* World = GetWorld();
     if (ADirectionalLight* Sun = World->SpawnActor<ADirectionalLight>(FVector(0.0, 0.0, 500.0), FRotator(-48.0, 32.0, 0.0)))
     {
-        Sun->GetLightComponent()->SetIntensity(6.0f);
+        Sun->GetLightComponent()->SetIntensity(60.0f);
     }
     if (ASkyLight* Sky = World->SpawnActor<ASkyLight>(FVector(0.0, 0.0, 300.0), FRotator::ZeroRotator))
     {
