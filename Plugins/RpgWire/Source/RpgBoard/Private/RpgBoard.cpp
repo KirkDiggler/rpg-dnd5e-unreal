@@ -187,7 +187,7 @@ void ARpgBoard::BuildFloor(const TArray<FIntPoint>& KnownCells)
         const FVector Centre = At(Cell, 0.0);
         CellBox += Centre;
         const int32 Base = Vertices.Num();
-        const FColor Tint = Cell == StartCell ? FColor(170, 143, 107) : FColor(115, 115, 115);
+        const FColor Tint = (Cell == StartCell ? RpgLook::kFloorStart : RpgLook::kFloor).ToFColor(true);
         for (int32 Corner = 0; Corner < 6; ++Corner)
         {
             const double Angle = FMath::DegreesToRadians(30.0 + 60.0 * Corner);
@@ -200,11 +200,19 @@ void ARpgBoard::BuildFloor(const TArray<FIntPoint>& KnownCells)
             Triangles.Append({Base, Base + Corner, Base + Corner + 1, Base, Base + Corner + 1, Base + Corner});
         }
     }
-    Floor->SetMaterial(0, LoadObject<UMaterial>(nullptr, TEXT("/Engine/EngineMaterials/VertexColorMaterial.VertexColorMaterial")));
+    UMaterial* FloorMaterial = LoadObject<UMaterial>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+    Floor->SetMaterial(0, FloorMaterial);
+    UE_LOG(LogRpgPlay, Display, TEXT("FLOOR cells=%d material=%s"), KnownCells.Num(), FloorMaterial ? TEXT("VertexColorMaterial") : TEXT("default"));
     Floor->CreateMeshSection(0, Vertices, Triangles, Normals, {}, Colors, {}, true);
-    if (!CellBox.IsValid) return;
+    FloorBounds = CellBox.IsValid ? CellBox.ExpandBy(kRadius) : FBox(ForceInit);
+    RefitCamera();
+}
 
-    const FBox Revealed = CellBox.ExpandBy(kRadius);
+void ARpgBoard::RefitCamera()
+{
+    FBox Revealed = FloorBounds;
+    for (const auto& Wall : Walls) if (IsValid(Wall.Get())) Revealed += Wall->GetComponentsBoundingBox();
+    if (!Revealed.IsValid) return;
     const FVector Middle = Revealed.GetCenter();
     const double Width = FMath::Max(Revealed.GetSize().X, 400.0);
     const double Depth = FMath::Max(Revealed.GetSize().Y, 400.0);
@@ -239,6 +247,8 @@ void ARpgBoard::RemoveFigure(const FString& Member)
     if (IsValid(Figure)) Figure->Destroy();
     Figures.Remove(Member);
     Sides.Remove(Member);
+    Words.Remove(Member);
+    Downed.Remove(Member);
     Playing.Remove(Member);
     Waiting.RemoveAll([&Member](const FMotionStep& Step)
     {
@@ -254,47 +264,104 @@ void ARpgBoard::SetFigureSide(const FString& Member, ERpgSide Side)
     if (!IsValid(Figure) || (Previous && *Previous == Side)) return;
     const TCHAR* Path = TEXT("/Engine/BasicShapes/Sphere.Sphere");
     const TCHAR* Name = TEXT("npc");
-    FLinearColor Tint(0.46f, 0.46f, 0.46f);
+    FLinearColor Tint = RpgLook::FigureColour(Side, Words.FindRef(Member), Member == Marked, Downed.FindRef(Member));
     if (Side == ERpgSide::Player)
     {
         Path = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
         Name = TEXT("player");
-        Tint = FLinearColor(0.06f, 0.25f, 0.95f);
+
     }
     else if (Side == ERpgSide::Monster)
     {
         Path = TEXT("/Engine/BasicShapes/Cube.Cube");
         Name = TEXT("monster");
-        Tint = FLinearColor(0.85f, 0.09f, 0.08f);
+
     }
     if (ApplyShape(*Figure, Path, Tint))
     {
         Sides.Add(Member, Side);
+        ApplyColour(Member);
         UE_LOG(LogRpgPlay, Display, TEXT("FIGURE %s side=%s"), *Member, Name);
     }
 }
 
+void ARpgBoard::ApplyColour(const FString& Member)
+{
+    AStaticMeshActor* Figure = Figures.FindRef(Member);
+    const ERpgSide* Side = Sides.Find(Member);
+    if (!IsValid(Figure) || !Side) return;
+    const FLinearColor Colour = RpgLook::FigureColour(*Side, Words.FindRef(Member), Member == Marked, Downed.FindRef(Member));
+    UMaterialInstanceDynamic* Material = Cast<UMaterialInstanceDynamic>(Figure->GetStaticMeshComponent()->GetMaterial(0));
+    if (Material) Material->SetVectorParameterValue(TEXT("Color"), Colour);
+    UE_LOG(LogRpgPlay, Display, TEXT("COLOUR %s %s"), *Member, *RpgLook::HexOf(Colour));
+}
+void ARpgBoard::SetFigureWord(const FString& Member, const FString& Word)
+{
+    if (!HasFigure(Member)) return;
+    Words.Add(Member, Word);
+    ApplyColour(Member);
+}
+void ARpgBoard::SetFigureDowned(const FString& Member, bool IsDowned)
+{
+    AStaticMeshActor* Figure = Figures.FindRef(Member);
+    if (!IsValid(Figure)) return;
+    Downed.Add(Member, IsDowned);
+    FRotator Rotation = Figure->GetActorRotation();
+    Rotation.Roll = IsDowned ? 90.0 : 0.0;
+    Figure->SetActorRotation(Rotation);
+    FVector Location = Figure->GetActorLocation();
+    Location.Z = IsDowned ? 31.0 : 51.0;
+    Figure->SetActorLocation(Location);
+    ApplyColour(Member);
+}
 void ARpgBoard::MoveMarkerTo(const FString& Whose)
 {
+    const FString Old = Marked;
     Marked = Whose;
+    ApplyColour(Old);
+    ApplyColour(Marked);
     if (!Marker && !Marked.IsEmpty())
     {
-        Marker = SpawnShape(GetWorld(), FVector::ZeroVector, FVector(0.27));
+        Marker = SpawnShape(GetWorld(), FVector::ZeroVector, FVector(1.8, 1.8, 0.02));
         if (Marker)
         {
-            ApplyShape(*Marker, TEXT("/Engine/BasicShapes/Cone.Cone"), FLinearColor::Yellow);
+            ApplyShape(*Marker, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"), RpgLook::kPlayerActive);
             Marker->SetActorEnableCollision(false);
         }
     }
     UpdateMarker();
 }
-
 void ARpgBoard::UpdateMarker()
 {
     if (!Marker) return;
     const AStaticMeshActor* Figure = Marked.IsEmpty() ? nullptr : Figures.FindRef(Marked).Get();
     Marker->SetActorHiddenInGame(!IsValid(Figure));
-    if (IsValid(Figure)) Marker->SetActorLocation(Figure->GetActorLocation() + FVector(0.0, 0.0, 220.0));
+    if (IsValid(Figure)) { FVector Pos = Figure->GetActorLocation(); Pos.Z = 1.0; Marker->SetActorLocation(Pos); }
+}
+void ARpgBoard::BuildGround()
+{
+    if (IsValid(Ground.Get())) Ground->Destroy();
+    Ground = SpawnShape(GetWorld(), FVector(0, 0, -2), FVector(400, 400, 1));
+    if (Ground && ApplyShape(*Ground, TEXT("/Engine/BasicShapes/Plane.Plane"), RpgLook::kGround))
+    {
+        Ground->SetActorEnableCollision(false);
+        UE_LOG(LogRpgPlay, Display, TEXT("GROUND ok"));
+    }
+}
+void ARpgBoard::BuildWalls(const TArray<FRpgWall>& InWalls)
+{
+    for (const auto& Wall : Walls) if (IsValid(Wall.Get())) Wall->Destroy();
+    Walls.Reset();
+    for (const FRpgWall& Wall : InWalls)
+    {
+        AStaticMeshActor* Actor = SpawnShape(GetWorld(), Wall.Centre, Wall.Size / 100.0);
+        if (!Actor) continue;
+        Actor->SetActorRotation(FRotator(0, Wall.Yaw, 0));
+        if (!ApplyShape(*Actor, TEXT("/Engine/BasicShapes/Cube.Cube"), Wall.Door ? RpgLook::kWood : RpgLook::kStone)) { Actor->Destroy(); continue; }
+        Walls.Add(Actor);
+    }
+    UE_LOG(LogRpgPlay, Display, TEXT("WALLS drawn=%d"), Walls.Num());
+    RefitCamera();
 }
 
 void ARpgBoard::Enqueue(const TArray<FMotionStep>& Steps)
@@ -399,6 +466,13 @@ void ARpgBoard::Clear()
     }
     Figures.Reset();
     Sides.Reset();
+    Words.Reset();
+    Downed.Reset();
+    for (const auto& Wall : Walls) if (IsValid(Wall.Get())) Wall->Destroy();
+    Walls.Reset();
+    if (IsValid(Ground.Get())) Ground->Destroy();
+    Ground = nullptr;
+    FloorBounds = FBox(ForceInit);
     if (IsValid(Marker.Get())) Marker->Destroy();
     Marker = nullptr;
     Floor->ClearAllMeshSections();
