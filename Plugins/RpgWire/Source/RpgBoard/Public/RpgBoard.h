@@ -6,6 +6,7 @@
 #include "RpgBoard.generated.h"
 
 class ACameraActor;
+class FRpgManifest;
 class UProceduralMeshComponent;
 
 enum class ERpgSide : uint8 { Player, Npc, Monster };
@@ -25,6 +26,7 @@ public:
     static constexpr double kWalkSeconds = 0.40;
     static constexpr double kSwingSeconds = 0.50;
 
+    void SetManifest(const FRpgManifest& InManifest);
     void BuildFloor(const TArray<FIntPoint>& Cells, const FIntPoint& StartCell);
     void ShotSubjects(TArray<FRpgShotSubject>& Out) const;
     void BuildWalls(const TArray<FRpgWall>& Walls);
@@ -44,6 +46,7 @@ public:
 
 private:
     friend class URpgPlay;
+    TSharedPtr<const FRpgManifest> Manifest;
     struct FMotion
     {
         FMotionStep Step;

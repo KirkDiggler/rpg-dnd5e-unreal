@@ -1,5 +1,6 @@
 #include "RpgBoard.h"
 #include "RpgLook.h"
+#include "RpgManifest.h"
 
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -232,6 +233,11 @@ ARpgBoard::ARpgBoard()
     Floor->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
     Floor->SetCollisionObjectType(ECC_WorldStatic);
     Floor->bUseComplexAsSimpleCollision = true;
+}
+
+void ARpgBoard::SetManifest(const FRpgManifest& InManifest)
+{
+    Manifest = MakeShared<FRpgManifest>(InManifest);
 }
 
 void ARpgBoard::BuildFloor(const TArray<FIntPoint>& InCells, const FIntPoint& InStartCell)

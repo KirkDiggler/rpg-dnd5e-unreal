@@ -3,6 +3,8 @@
 #include "Async/Async.h"
 #include "Containers/StringConv.h"
 #include "Misc/Parse.h"
+#include "Misc/Paths.h"
+#include "RpgManifest.h"
 #include "RpgLook.h"
 #include "RpgBoard.h"
 #include "RpgMotion.h"
@@ -189,6 +191,8 @@ URpgPlay* URpgPlay::Create(UObject* Outer, ARpgBoard* InBoard, FStatus InStatus,
 {
     URpgPlay* Play = NewObject<URpgPlay>(Outer);
     Play->Board = InBoard;
+    static const FRpgManifest Manifest = FRpgManifest::Load(FPaths::ProjectConfigDir() / TEXT("RpgGameAssetsManifest.json"));
+    if (IsValid(InBoard)) InBoard->SetManifest(Manifest);
     Play->OnStatus = MoveTemp(InStatus);
     Play->OnReady = MoveTemp(InReady);
     Play->OnLeft = MoveTemp(InLeft);
