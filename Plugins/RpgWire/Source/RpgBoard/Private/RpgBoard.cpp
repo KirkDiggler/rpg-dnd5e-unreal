@@ -6,6 +6,7 @@
 #include "Camera/CameraComponent.h"
 #include "CollisionQueryParams.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/MeshComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Misc/Paths.h"
@@ -316,8 +317,20 @@ void ARpgBoard::ShotSubjects(TArray<FRpgShotSubject>& Out) const
         if (!IsValid(Pair.Value.Get())) continue;
         const ERpgSide* Side = Sides.Find(Pair.Key);
         if (!Side) continue;
-        Out.Add({Pair.Key, Pair.Value->GetComponentsBoundingBox(true), false,
-            NativeFigures.Contains(Pair.Key) ? FString(TEXT("NATIVE")) : RpgLook::HexOf(RpgLook::FigureColour(*Side, Words.FindRef(Pair.Key), Pair.Key == Marked, Downed.FindRef(Pair.Key)))});
+        if (NativeFigures.Contains(Pair.Key))
+        {
+            // Collision capsules and Blueprint demo cameras are not rendered subjects.
+            FBox Bounds(ForceInit);
+            TInlineComponentArray<UMeshComponent*> Meshes(Pair.Value.Get());
+            for (const UMeshComponent* Mesh : Meshes)
+                if (Mesh->IsVisible() && !Mesh->bHiddenInGame) Bounds += Mesh->Bounds.GetBox();
+            Out.Add({Pair.Key, Bounds, false, TEXT("NATIVE")});
+        }
+        else
+        {
+            Out.Add({Pair.Key, Pair.Value->GetComponentsBoundingBox(true), false,
+                RpgLook::HexOf(RpgLook::FigureColour(*Side, Words.FindRef(Pair.Key), Pair.Key == Marked, Downed.FindRef(Pair.Key)))});
+        }
     }
     auto OccupiedAt = [this](const FIntPoint& Cell)
     {

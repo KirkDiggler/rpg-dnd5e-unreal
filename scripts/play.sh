@@ -70,6 +70,37 @@ refusal_shown() {
   [ -n "$words" ] && grep -aF 'LogRpgPlay: Display: STATUS ' "$LOG" | grep -F -- "$words" >/dev/null
 }
 
+KINGDOM=/Game/PolygonFantasyKingdom/Meshes/CharactersUE4
+MOUNTED=0
+if [ -f "$ROOT/Config/RpgGameAssetsManifest.json" ] && [ -d "$ROOT/Content/PolygonFantasyKingdom" ]; then MOUNTED=1; fi
+native_or_colour() {
+  local name="$1" asset="$2" colour="$3"
+  if [ "$MOUNTED" -eq 1 ]; then
+    check "$name native" logged "FIGURE $name native=$KINGDOM/$asset"
+  else
+    check "$name colour" logged "COLOUR $name $colour"
+  fi
+}
+castle_guard_frame() {
+  awk -v prefix="$KINGDOM/BP_Chr_Soldier_" '
+    /LogRpgPlay: Display: / {
+      sub(/^.*LogRpgPlay: Display: /, ""); sub(/\r$/, "")
+      if ($1 == "SHOT") exit
+      if ($1 == "JOINED" && $2 ~ /^gate-/) guards[$2] = 1
+      if ($1 == "LOST") delete guards[$2]
+      if ($1 == "FIGURE" && $2 ~ /^gate-/ && index($3, "native=") == 1)
+        soldier[$2] = index($3, "native=" prefix) == 1
+      if ($1 == "PIXEL" && $7 == "NATIVE") pixel[$2] = 1
+    }
+    END {
+      for (guard in guards) {
+        n++
+        if (!soldier[guard] || !pixel[guard]) bad = 1
+      }
+      exit (!n || bad)
+    }' "$LOG"
+}
+
 if [ "$MODE" = --play ]; then
   # SIGHT lines are emitted only for this observer's parsed gained entries.
   # Correlate all three facts to the same member, not three unrelated lines.
@@ -82,8 +113,8 @@ if [ "$MODE" = --play ]; then
         joined[$2] = 1; seenJoin = 1
       } else if ($1 == "ROSTER" && $3 ~ /^members=/) {
         n = split(substr($3, 9), roster, ",")
-        for (i = 1; i <= n; ++i) if (joined[roster[i]]) resolved[roster[i]] = 1
-      } else if ($1 == "FIGURE" && $3 == "side=monster" && resolved[$2]) {
+        for (i = 1; i <= n; ++i) resolved[roster[i]] = 1
+      } else if ($1 == "FIGURE" && $3 == "side=monster" && resolved[$2] && sight[$2]) {
         monster[$2] = 1; seenMonster = 1
       } else if ($1 == "MOTION" && $2 == "walk" && monster[$3]) {
         seenWalk = 1
@@ -99,6 +130,9 @@ if [ "$MODE" = --play ]; then
   check 'sighted member joined' test "$JOINED" -eq 1
   check 'admitted member resolved to monster from roster' test "$MONSTER" -eq 1
   check 'admitted monster walked' test "$WALKED" -eq 1
+  if [ "$SCENARIO" = castle ] && [ "$MOUNTED" -eq 1 ]; then
+    check 'castle guards in this frame resolved to native soldiers' castle_guard_frame
+  fi
   if [ "$RESULT" -ne 0 ]; then
     echo "FAIL game process (status $RESULT; log: $LOG)"
     FAILS=$((FAILS + 1))
@@ -113,10 +147,11 @@ check "process exited within timeout (status $RESULT)" test "$RESULT" -eq 0
 check 'play target' logged "PLAY addr=$ADDR session=$SESSION member=$MEMBER"
 case "$SCENARIO" in
   tomb)
-    check 'fighter active colour' logged 'COLOUR ue-fighter #63B3ED'
+    native_or_colour ue-fighter BP_Chr_Rider_01 '#63B3ED'
+    check 'dummy uses a stand-in' logged 'FIGURE ue-dummy shape'
     check 'dummy colour' logged 'COLOUR ue-dummy #E53E3E'
     check 'dummy active colour after end turn' after_end_turn 'COLOUR ue-dummy #FC8181'
-    check 'fighter inactive colour after end turn' after_end_turn 'COLOUR ue-fighter #3182CE'
+    if [ "$MOUNTED" -eq 0 ]; then check 'fighter inactive colour after end turn' after_end_turn 'COLOUR ue-fighter #3182CE'; fi
     check 'walls match atlas placement' tomb_walls_match_atlas
     check 'roster names the fighter and skeleton'  matches 'ROSTER n=2 members=(ue-fighter,ue-dummy|ue-dummy,ue-fighter)\r?$'
     check 'turn clock' logged 'AFFORD clock=2 '
@@ -130,7 +165,8 @@ case "$SCENARIO" in
     check 'turn marker motion' matches 'MOTION turn [^[:space:]]+'
     ;;
   range)
-    check 'archer active colour' logged 'COLOUR ue-archer #63B3ED'
+    native_or_colour ue-archer BP_Chr_Rider_01 '#63B3ED'
+    check 'far skeleton uses a stand-in' logged 'FIGURE ue-far shape'
     check 'far colour' logged 'COLOUR ue-far #E53E3E'
     check 'turn clock' logged 'AFFORD clock=2 '
     check 'attack sent' logged 'VERB attack ue-archer ue-far'
@@ -139,7 +175,7 @@ case "$SCENARIO" in
     check 'no swing' not_logged 'MOTION swing'
     ;;
   walk)
-    check 'walker active colour' logged 'COLOUR ue-walker #63B3ED'
+    native_or_colour ue-walker BP_Chr_Rider_01 '#63B3ED'
     check 'world clock' logged 'AFFORD clock=1 '
     check 'move sent' logged 'VERB move ue-walker (1,1)…(3,1)'
     check 'two moved beats' counted 'BEAT moved ' 2
@@ -148,8 +184,12 @@ case "$SCENARIO" in
     check 'no turn ended beat' not_logged 'BEAT turn-ended '
     ;;
   castle)
-    check 'alice active colour' logged 'COLOUR alice #63B3ED'
-    check 'pedlar colour' logged 'COLOUR pedlar #E53E3E'
+    native_or_colour alice BP_Chr_Rider_01 '#63B3ED'
+    native_or_colour pedlar BP_Chr_Merchant_01 '#E53E3E'
+    if [ "$MOUNTED" -eq 1 ]; then
+      check 'two castle native subjects' matches 'PIXEL (alice|pedlar) .* NATIVE\r?$'
+      check 'exactly two native footprints' test "$(grep -acE 'PIXEL .+ NATIVE\r?$' "$LOG")" -eq 2
+    fi
     check 'walls drawn' matches 'WALLS drawn=7\r?$'
     check 'nonempty roster' matches 'ROSTER n=[1-9][0-9]* '
     check 'pedlar is monster' logged 'FIGURE pedlar side=monster'
