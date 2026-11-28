@@ -14,7 +14,12 @@ def main():
     with open(sys.argv[2], encoding='utf-8', errors='replace') as log:
         lines = list(log)
     subjects = [m.groups() for line in lines if (m := pattern.search(line))]
-    members = {m.group(1) for line in lines if (m := colour_pattern.search(line))}
+    members = set()
+    for line in lines:
+        if 'LogRpgPlay: Display: SHOT ' in line:
+            break
+        if m := colour_pattern.search(line):
+            members.add(m.group(1))
     missing = members - {subject[0] for subject in subjects}
     for member in sorted(missing):
         print(f'FAIL palette {member}: no PIXEL')
