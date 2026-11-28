@@ -1,4 +1,6 @@
 #include "RpgSession.h"
+#include "RpgRead.h"
+#include "RpgLog.h"
 
 #include <chrono>
 #include <grpcpp/grpcpp.h>
@@ -374,17 +376,32 @@ bool Session::Roster(const std::string& session, const std::string& member, std:
     for (const auto& wire : response.members())
     {
         Member value;
-        value.id = wire.id();
-        switch (wire.kind())
-        {
-            case v1::MEMBER_KIND_PLAYER: value.kind = Member::Kind::Player; break;
-            case v1::MEMBER_KIND_MONSTER: value.kind = Member::Kind::Monster; break;
-            case v1::MEMBER_KIND_WORLD: value.kind = Member::Kind::World; break;
-            default: value.kind = Member::Kind::Unspecified; break;
-        }
-        value.name = wire.name();
-        value.monster_ref = wire.monster_ref();
-        value.class_ref = wire.class_ref();
+        ReadMember(wire, value);
+        out->push_back(value);
+    }
+    return true;
+}
+
+bool Session::View(const std::string& session, const std::string& member, std::vector<Sighting>* out, std::string* error)
+{
+    v1::GetViewRequest request;
+    request.set_session(session);
+    request.set_member(member);
+    v1::GetViewResponse response;
+    std::unique_ptr<v1::SessionService::Stub> stub = v1::SessionService::NewStub(channel_);
+    std::unique_ptr<grpc::ClientContext> context = Context();
+    const grpc::Status status = stub->GetView(context.get(), request, &response);
+    if (!status.ok())
+    {
+        if (error) *error = status.error_message();
+        return false;
+    }
+    UE_LOG(LogRpgWire, Verbose, TEXT("VIEWRAW %s"), UTF8_TO_TCHAR(response.DebugString().c_str()));
+    out->clear();
+    for (const auto& wire : response.sightings())
+    {
+        Sighting value;
+        ReadSighting(wire, value);
         out->push_back(value);
     }
     return true;

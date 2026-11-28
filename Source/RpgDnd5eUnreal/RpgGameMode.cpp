@@ -6,6 +6,7 @@
 #include "Engine/SkyLight.h"
 #include "Engine/World.h"
 #include "HAL/PlatformMisc.h"
+#include "GameFramework/PlayerController.h"
 #include "Misc/App.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Paths.h"
@@ -22,6 +23,35 @@
 
 namespace
 {
+    void TakeShot(UWorld* World, ARpgBoard* Board, const FString& Path)
+    {
+        if (!World || !IsValid(Board) || FApp::IsNullRHIRequested() || FPaths::IsRelative(Path)) return;
+        APlayerController* Controller = World->GetFirstPlayerController();
+        TArray<FRpgShotSubject> Subjects;
+        Board->ShotSubjects(Subjects);
+        for (const FRpgShotSubject& Subject : Subjects)
+        {
+            FBox2D ScreenBox(ForceInit);
+            bool Projected = Controller && Subject.Box.IsValid;
+            for (int32 Corner = 0; Corner < 8 && Projected; ++Corner)
+            {
+                const FVector WorldPoint((Corner & 1) ? Subject.Box.Max.X : Subject.Box.Min.X,
+                    (Corner & 2) ? Subject.Box.Max.Y : Subject.Box.Min.Y,
+                    (Corner & 4) ? Subject.Box.Max.Z : Subject.Box.Min.Z);
+                FVector2D Screen;
+                if (!Controller->ProjectWorldLocationToScreen(WorldPoint, Screen)) Projected = false;
+                else ScreenBox += Screen;
+            }
+            if (Projected && Subject.Point) ScreenBox = ScreenBox.ExpandBy(4.0);
+            const int32 X0 = Projected ? FMath::FloorToInt(ScreenBox.Min.X) : -1;
+            const int32 Y0 = Projected ? FMath::FloorToInt(ScreenBox.Min.Y) : -1;
+            const int32 X1 = Projected ? FMath::CeilToInt(ScreenBox.Max.X) : -1;
+            const int32 Y1 = Projected ? FMath::CeilToInt(ScreenBox.Max.Y) : -1;
+            UE_LOG(LogRpgPlay, Display, TEXT("PIXEL %s %d %d %d %d %s"), *Subject.What, X0, Y0, X1, Y1, *Subject.Hex);
+        }
+        FScreenshotRequest::RequestScreenshot(Path, false, false);
+        UE_LOG(LogRpgPlay, Display, TEXT("SHOT %s"), *Path);
+    }
     FRpgDnd5eUnrealModule& GameModule()
     {
         return FModuleManager::GetModuleChecked<FRpgDnd5eUnrealModule>(TEXT("RpgDnd5eUnreal"));
@@ -74,10 +104,18 @@ void ARpgGameMode::StartPlay()
             if (auto* Controller = Cast<ARpgPlayerController>(Mode->GetWorld()->GetFirstPlayerController()))
             {
                 Controller->Adopt(Mode->Board, Mode->Play);
+                Controller->ConsoleCommand(TEXT("ShowFlag.Tonemapper 0"));
             }
             GameModule().Ready(Mode);
         },
         [Weak] { if (ARpgGameMode* Mode = Weak.Get()) Mode->Left(); });
+    if (!Target.ShotOnJoin.IsEmpty())
+    {
+        Play->SetOnFirstJoin([Weak, Path = Target.ShotOnJoin]
+        {
+            if (ARpgGameMode* Mode = Weak.Get()) TakeShot(Mode->GetWorld(), Mode->Board, Path);
+        });
+    }
     Play->Join(Target);
 }
 
@@ -148,7 +186,6 @@ void ARpgGameMode::Inject(const FString& Command, const TArray<FString>& Args)
     }
     else if (Command == TEXT("shot") && Args.Num() == 1 && !FApp::IsNullRHIRequested() && !FPaths::IsRelative(Args[0]))
     {
-        FScreenshotRequest::RequestScreenshot(Args[0], false, false);
-        UE_LOG(LogRpgPlay, Display, TEXT("SHOT %s"), *Args[0]);
+        TakeShot(GetWorld(), Board, Args[0]);
     }
 }
