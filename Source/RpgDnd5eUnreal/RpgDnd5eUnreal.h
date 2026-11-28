@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
+#include "UObject/WeakObjectPtr.h"
 
 class ARpgGameMode;
 struct IConsoleCommand;
