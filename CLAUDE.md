@@ -16,8 +16,10 @@ a seam. The workspace's own rules are in the root `AGENTS.md` of game-dev.
 |---|---|---|
 | how the client talks to the engine | `Plugins/RpgWire/Source/RpgWire/` | plain C++: no Unreal type in `Public/` beyond the export macro; every call blocking, run off the game thread |
 | what a record beat means | `Plugins/RpgWire/Source/RpgClient/` | a function with no world in it, tested against beats the engine wrote |
-| how a beat is shown | a later module, not yet here | motion only from what the record says, never from a verb's response |
+| how a beat is shown | `Plugins/RpgWire/Source/RpgBoard/` | motion only from what the record says, never from a verb's response |
 | what is generated or built | `scripts/`, never by hand | `Private/pb/` and `Source/ThirdParty/` are ignored for a reason |
+
+No core type in `RpgBoard/Public/`; the loop’s Unreal face lives here and nowhere else.
 
 ## Before you build
 
@@ -30,9 +32,10 @@ mounts the content if the store is beside this repository.
 ## Verify, and say what you ran
 
 - `scripts/build.sh` — the editor target.
-- `scripts/test.sh` — the beat-reading's tests; with the engine's test
+- `scripts/test.sh` — the beat-reading and board tests; with the engine's test
   server running (`RPGWIRE_TEST_ADDR`, `RPGWIRE_TEST_INFO`), the verbs'.
   The editor's exit status is not the verdict; read the per-test results.
+- `scripts/play.sh <tomb|range|walk|castle>` — run a live board scenario against the test server.
 - `scripts/test-libs.sh` — the libraries: built by this repository, built as
   the module is built, the pin written down.
 - `scripts/perfile-check.py` — every `.cpp` compiled alone. Unreal builds

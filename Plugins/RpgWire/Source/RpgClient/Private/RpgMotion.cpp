@@ -134,6 +134,11 @@ namespace
     }
 } // namespace
 
+FVector2D CentreOf(const FIntPoint& Cell)
+{
+    return FVector2D(kSqrt3 * kCmPerCell * (Cell.X + Cell.Y / 2.0), 1.5 * kCmPerCell * Cell.Y);
+}
+
 FIntPoint CellAt(const FVector2D& centimetres)
 {
     // The inverse of the layout: r is y over 150; q is x over the column

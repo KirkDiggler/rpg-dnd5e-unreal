@@ -201,4 +201,18 @@ bool FMotionCellAtTest::RunTest(const FString& Parameters)
     return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMotionCentreTest, "RpgClient.Motion.CentreOfACellNamesThePointCellAtReads",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMotionCentreTest::RunTest(const FString& Parameters)
+{
+    for (const FIntPoint& Cell : {FIntPoint(0, 0), FIntPoint(1, 0), FIntPoint(1, 1), FIntPoint(-3, 7), FIntPoint(4, -2)})
+    {
+        TestEqual(FString::Printf(TEXT("CellAt reads the centre of (%d,%d)"), Cell.X, Cell.Y), CellAt(CentreOf(Cell)), Cell);
+    }
+    TestEqual(TEXT("the centre of (1,0) is sqrt(3) times the radius east"),
+        CentreOf(FIntPoint(1, 0)), FVector2D(FMath::Sqrt(3.0) * 100.0, 0.0));
+    return !HasAnyErrors();
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

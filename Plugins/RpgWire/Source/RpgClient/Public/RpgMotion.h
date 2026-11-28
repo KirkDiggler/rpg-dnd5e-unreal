@@ -7,9 +7,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "HAL/Platform.h"
 
 /// One thing a figure does because of a beat.
-struct FMotionStep
+struct RPGCLIENT_API FMotionStep
 {
     enum class Kind { Walk, Swing, Turn };
 
@@ -25,16 +26,16 @@ struct FMotionStep
 /// set it, and a `moved` beat names only the cell arrived at, so the cell it
 /// left comes from here. Returns false for a beat that moves nobody (and
 /// for one whose payload cannot be read), true otherwise.
-bool PlanMotion(const FString& beat, const FString& fields_json, TMap<FString, FIntPoint>& cells,
+RPGCLIENT_API bool PlanMotion(const FString& beat, const FString& fields_json, TMap<FString, FIntPoint>& cells,
                 TArray<FMotionStep>& out);
 
 /// The cells a walk from `from` to `to` takes on the hex board, both ends
 /// included, each one adjacent to the next: the straight line in cube
 /// coordinates, rounded. The engine prices and may refuse the path; this
 /// only names it.
-TArray<FIntPoint> HexLine(const FIntPoint& from, const FIntPoint& to);
+RPGCLIENT_API TArray<FIntPoint> HexLine(const FIntPoint& from, const FIntPoint& to);
 
-/// The cell a point of the floor is in, for the board the scene lab builds:
-/// pointy-topped hexes 100 cm apart, cell (q, r) centred at
-/// (√3·(q + r/2), 1.5·r) in centimetres.
-FIntPoint CellAt(const FVector2D& centimetres);
+/// Pointy-topped hexes of 100 cm circumradius. CentreOf names the point
+/// at the centre of (q,r): (√3·100·(q + r/2), 150·r) in centimetres.
+RPGCLIENT_API FVector2D CentreOf(const FIntPoint& Cell);
+RPGCLIENT_API FIntPoint CellAt(const FVector2D& centimetres);
