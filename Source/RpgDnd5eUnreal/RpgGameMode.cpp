@@ -104,6 +104,7 @@ void ARpgGameMode::StartPlay()
             if (auto* Controller = Cast<ARpgPlayerController>(Mode->GetWorld()->GetFirstPlayerController()))
             {
                 Controller->Adopt(Mode->Board, Mode->Play);
+                Controller->ConsoleCommand(TEXT("ShowFlag.Tonemapper 0"));
             }
             GameModule().Ready(Mode);
         },
