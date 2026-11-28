@@ -10,7 +10,7 @@ class ARpgBoard;
 
 struct RPGBOARD_API FRpgTarget
 {
-    FString Address, Session, Member, Player;
+    FString Address, Session, Member, Player, ShotOnJoin;
     static bool Parse(const FString& CommandLine, FRpgTarget& Out, FString& Why);
 };
 
@@ -26,6 +26,7 @@ public:
 
     static URpgPlay* Create(UObject* Outer, ARpgBoard* Board, FStatus OnStatus, FReady OnReady, FLeft OnLeft);
     void Join(const FRpgTarget& Target);
+    void SetShotOnJoin(const FString& Path);
     void ClickCell(const FIntPoint& Cell);
     void ClickFigure(const FString& Member);
     void EndTurn();
@@ -44,6 +45,7 @@ private:
     FLeft OnLeft;
     FString TurnMember;
     FString LastWords;
+    FString ShotOnJoin;
     bool bJoining = false;
     bool bJoined = false;
     bool bReady = false;
@@ -54,6 +56,8 @@ private:
     void TryReady();
     void ApplySight(const TArray<FString>& Gained, const TArray<FString>& Lost);
     void RefreshBoard();
+    void RefreshView();
+    void ApplyCachedWord(const FString& Member);
     void FailJoin(const FString& Why);
     void Act(FAct Request);
     bool CanAct(const TCHAR* Input) const;

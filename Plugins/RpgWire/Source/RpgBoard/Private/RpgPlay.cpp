@@ -3,6 +3,8 @@
 #include "Async/Async.h"
 #include "Containers/StringConv.h"
 #include "Misc/Parse.h"
+#include "UnrealClient.h"
+#include "RpgLook.h"
 #include "RpgBoard.h"
 #include "RpgMotion.h"
 #include "RpgRecordStream.h"
@@ -90,6 +92,35 @@ namespace
         return Cells;
     }
 
+    TArray<FRpgWall> ReadWalls(const rpgwire::Atlas& Atlas)
+    {
+        TArray<FRpgWall> Walls;
+        for (const auto& Placed : Atlas.placed)
+        {
+            std::string Parent = Placed.id;
+            const auto Cut = Parent.rfind("/span/");
+            const bool Span = Cut != std::string::npos;
+            if (Span) Parent.resize(Cut);
+            auto Info = Atlas.authored.find(Parent);
+            if (Info == Atlas.authored.end() && !Atlas.dungeon_key.empty()) Info = Atlas.authored.find(Atlas.dungeon_key + "/" + Parent);
+            if (Info == Atlas.authored.end()) continue;
+            if (!Info->second.door && (Span != (Info->second.openings > 0))) continue;
+            FRpgWall Wall;
+            Wall.Id = Read(Placed.id);
+            Wall.Centre = RpgLook::BoxCentre(Placed.origin_x, Placed.origin_y, Info->second.elevation, Info->second.height);
+            Wall.Size = RpgLook::BoxSize(Placed.depth, Placed.width, Info->second.height);
+            Wall.Yaw = Placed.facing;
+            Wall.Door = Info->second.door;
+            Walls.Add(MoveTemp(Wall));
+        }
+        return Walls;
+    }
+    void ReportFactions(const std::vector<rpgwire::Member>& Members)
+    {
+        TArray<FString> Values;
+        for (const auto& Member : Members) if (!Member.faction.empty()) Values.Add(Read(Member.id) + TEXT(":") + Read(Member.faction));
+        if (!Values.IsEmpty()) UE_LOG(LogRpgPlay, Display, TEXT("FACTIONS %s"), *FString::Join(Values, TEXT(",")));
+    }
     FString CellText(const FIntPoint& Cell)
     {
         return FString::Printf(TEXT("(%d,%d)"), Cell.X, Cell.Y);
@@ -109,6 +140,10 @@ struct URpgPlay::FState
     // These read models belong to the game thread after marshal.
     rpgwire::Afforded Afforded_;
     FRoster Roster;
+    TArray<FRpgWall> Walls;
+    TMap<FString, TPair<FString, bool>> Words;
+    bool bViewBusy = false;
+    bool bViewPending = false;
     TArray<TPair<TArray<FString>, TArray<FString>>> OpeningSight;
     bool bReadRoster = false;
     bool bReadAtlas = false;
@@ -140,6 +175,7 @@ bool FRpgTarget::Parse(const FString& CommandLine, FRpgTarget& Out, FString& Why
             return false;
         }
     }
+    FParse::Value(*CommandLine, TEXT("RpgShotOnJoin="), Parsed.ShotOnJoin);
     Out = MoveTemp(Parsed);
     Why.Reset();
     return true;
@@ -155,10 +191,13 @@ URpgPlay* URpgPlay::Create(UObject* Outer, ARpgBoard* InBoard, FStatus InStatus,
     return Play;
 }
 
+void URpgPlay::SetShotOnJoin(const FString& Path) { ShotOnJoin = Path; }
+
 void URpgPlay::Join(const FRpgTarget& Target)
 {
     if (State) return;
     bJoining = true;
+    SetShotOnJoin(Target.ShotOnJoin);
     TurnMember = Target.Member;
     State = MakeShared<FState, ESPMode::ThreadSafe>(Target);
     UE_LOG(LogRpgPlay, Display, TEXT("PLAY addr=%s session=%s member=%s"), *Target.Address, *Target.Session, *Target.Member);
@@ -225,7 +264,9 @@ void URpgPlay::Join(const FRpgTarget& Target)
             Joined.Start = FIntPoint(Atlas.start.first, Atlas.start.second);
             Joined.KnownCells = ReadCells(Atlas);
             Joined.Roster = ReadRoster(Members);
+            Joined.Walls = ReadWalls(Atlas);
             ReportRoster(Joined.Roster);
+            ReportFactions(Members);
             UE_LOG(LogRpgPlay, Display, TEXT("ATLAS cells=%d placed=%d"), Joined.KnownCells.Num(), static_cast<int32>(Atlas.placed.size()));
             Play->bJoined = true;
             Play->TryReady();
@@ -251,12 +292,15 @@ void URpgPlay::TryReady()
     }
     Board->StartCell = State->Start;
     Board->BuildFloor(State->KnownCells);
-    for (const auto& Member : State->Roster) Board->PlaceFigure(Member.Key, Member.Value, *Board->CellOf(Member.Key));
+    Board->BuildWalls(State->Walls);
+    Board->BuildGround();
+    for (const auto& Member : State->Roster) { Board->PlaceFigure(Member.Key, Member.Value, *Board->CellOf(Member.Key)); ApplyCachedWord(Member.Key); }
     Board->MoveMarkerTo(TurnMember);
     bJoining = false;
     bReady = true;
     for (const auto& Delta : State->OpeningSight) ApplySight(Delta.Key, Delta.Value);
     State->OpeningSight.Reset();
+    RefreshView();
     RefreshBoard();
     ReportAfford(State->Afforded_);
     PublishStatus();
@@ -328,10 +372,18 @@ void URpgPlay::ApplySight(const TArray<FString>& Gained, const TArray<FString>& 
             if (Board->HasFigure(Member))
             {
                 UE_LOG(LogRpgPlay, Display, TEXT("JOINED %s %d %d"), *Member, Cell->X, Cell->Y);
+                ApplyCachedWord(Member);
+                if (!ShotOnJoin.IsEmpty())
+                {
+                    FScreenshotRequest::RequestScreenshot(ShotOnJoin, false, false);
+                    UE_LOG(LogRpgPlay, Display, TEXT("SHOT %s"), *ShotOnJoin);
+                    ShotOnJoin.Reset();
+                }
                 State->bReadRoster = true;
             }
         }
     }
+    if (bReady && (!Gained.IsEmpty() || !Lost.IsEmpty())) RefreshView();
 }
 
 void URpgPlay::RefreshBoard()
@@ -352,7 +404,7 @@ void URpgPlay::RefreshBoard()
         const bool GotRoster = WantRoster && Active->Session->Roster(Options.session, Options.member, &Members, &RosterError);
         const bool GotAtlas = WantAtlas && Active->Session->Atlas(Options.session, Options.member, &Atlas, &AtlasError);
         AsyncTask(ENamedThreads::GameThread, [Weak, GotRoster, GotAtlas, Roster = ReadRoster(Members), Cells = ReadCells(Atlas),
-            Start = FIntPoint(Atlas.start.first, Atlas.start.second), Placed = Atlas.placed.size(),
+            Start = FIntPoint(Atlas.start.first, Atlas.start.second), Placed = Atlas.placed.size(), Walls = ReadWalls(Atlas), Members = MoveTemp(Members),
             RosterWhy = Read(RosterError), AtlasWhy = Read(AtlasError)]
         {
             URpgPlay* Play = Weak.Get();
@@ -360,6 +412,7 @@ void URpgPlay::RefreshBoard()
             if (GotRoster)
             {
                 ReportRoster(Roster);
+                ReportFactions(Members);
                 for (const auto& Member : Roster) Play->Board->SetFigureSide(Member.Key, Member.Value);
             }
             if (GotAtlas)
@@ -367,6 +420,7 @@ void URpgPlay::RefreshBoard()
                 Play->Board->StartCell = Start;
                 Play->Board->BuildFloor(Cells);
                 UE_LOG(LogRpgPlay, Display, TEXT("ATLAS cells=%d placed=%d"), Cells.Num(), static_cast<int32>(Placed));
+                Play->Board->BuildWalls(Walls);
             }
             if (!RosterWhy.IsEmpty() || !AtlasWhy.IsEmpty())
             {
@@ -375,6 +429,50 @@ void URpgPlay::RefreshBoard()
             }
             Play->State->bRefreshing = false;
             Play->RefreshBoard();
+        });
+    });
+}
+
+void URpgPlay::ApplyCachedWord(const FString& Member)
+{
+    if (const auto* Word = State->Words.Find(Member))
+    {
+        Board->SetFigureWord(Member, Word->Key);
+        Board->SetFigureDowned(Member, Word->Value);
+    }
+}
+void URpgPlay::RefreshView()
+{
+    if (!bReady || bLeaving || !State || !State->Session) return;
+    if (State->bViewBusy) { State->bViewPending = true; return; }
+    State->bViewBusy = true;
+    const auto Active = State;
+    const TWeakObjectPtr<URpgPlay> Weak(this);
+    Async(EAsyncExecution::ThreadPool, [Weak, Active]
+    {
+        std::vector<rpgwire::Sighting> Sightings;
+        std::string Error;
+        const bool Ok = Active->Session->View(Active->Options.session, Active->Options.member, &Sightings, &Error);
+        AsyncTask(ENamedThreads::GameThread, [Weak, Active, Ok, Sightings = MoveTemp(Sightings), Why = Read(Error)]
+        {
+            URpgPlay* Play = Weak.Get();
+            if (!Play || Play->bLeaving || !IsValid(Play->Board)) return;
+            if (Ok)
+            {
+                Active->Words.Reset();
+                int32 Count = 0;
+                for (const auto& Sighting : Sightings)
+                {
+                    const FString Id = Read(Sighting.id), Word = Read(Sighting.stance);
+                    if (!Word.IsEmpty()) ++Count;
+                    Active->Words.Add(Id, TPair<FString, bool>(Word, Sighting.standing == 2));
+                    Play->ApplyCachedWord(Id);
+                }
+                UE_LOG(LogRpgPlay, Display, TEXT("VIEW sightings=%d words=%d"), static_cast<int32>(Sightings.size()), Count);
+            }
+            else { Play->LastWords = Why; Play->PublishStatus(); }
+            Active->bViewBusy = false;
+            if (Active->bViewPending) { Active->bViewPending = false; Play->RefreshView(); }
         });
     });
 }
@@ -473,6 +571,7 @@ void URpgPlay::Act(FAct Request)
             Play->LastWords = (!Refreshed && Last.IsEmpty()) ? RefreshWhy : Last;
             Play->bActing = false;
             Play->PublishStatus();
+            Play->RefreshView();
         });
     });
 }

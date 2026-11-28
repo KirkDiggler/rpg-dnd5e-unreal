@@ -37,7 +37,9 @@ EDITOR=("$UE_ROOT/Engine/Binaries/Linux/UnrealEditor-Cmd" "$ROOT/RpgDnd5eUnreal.
 RESULT=0
 if [ "$MODE" = --play ]; then
   LOG="$OUT/$SCENARIO-play.log"
-  "${EDITOR[@]}" -windowed -ResX=1280 -ResY=720 > "$LOG" 2>&1 || RESULT=$?
+  PLAYFRAME="$OUT/$SCENARIO-play.png"
+  if [ -e "$PLAYFRAME" ]; then unlink "$PLAYFRAME"; fi
+  "${EDITOR[@]}" -windowed -ResX=1280 -ResY=720 "-RpgShotOnJoin=$PLAYFRAME" > "$LOG" 2>&1 || RESULT=$?
 else
   # A prior run must not stand in for a frame this run actually produced.
   if [ -e "$FRAME" ]; then unlink "$FRAME"; fi
@@ -84,6 +86,7 @@ if [ "$MODE" = --play ]; then
     END { print seenJoin+0, seenMonster+0, seenWalk+0 }
   ' "$LOG")"
   read -r JOINED MONSTER WALKED <<< "$facts"
+  check frame test -s "$PLAYFRAME"
   check 'sighted member joined' test "$JOINED" -eq 1
   check 'admitted member resolved to monster from roster' test "$MONSTER" -eq 1
   check 'admitted monster walked' test "$WALKED" -eq 1
@@ -94,11 +97,19 @@ if [ "$MODE" = --play ]; then
   exit "$FAILS"
 fi
 
+check 'floor material' matches 'FLOOR cells=[0-9]+ material=VertexColorMaterial'
+check 'no missing object' bash -c '! grep -aq "Failed to find object" "$1"' _ "$LOG"
+check 'ground' logged 'GROUND ok'
 check "process exited within timeout (status $RESULT)" test "$RESULT" -eq 0
 check 'play target' logged "PLAY addr=$ADDR session=$SESSION member=$MEMBER"
 case "$SCENARIO" in
   tomb)
-    check 'roster names the fighter and skeleton' matches 'ROSTER n=2 members=(ue-fighter,ue-dummy|ue-dummy,ue-fighter)\r?$'
+    check 'fighter active colour' logged 'COLOUR ue-fighter #63B3ED'
+    check 'dummy colour' logged 'COLOUR ue-dummy #E53E3E'
+    check 'dummy active colour' logged 'COLOUR ue-dummy #FC8181'
+    check 'fighter inactive colour' logged 'COLOUR ue-fighter #3182CE'
+    check 'walls reported' matches 'WALLS drawn=[0-9]+'
+    check 'roster names the fighter and skeleton'  matches 'ROSTER n=2 members=(ue-fighter,ue-dummy|ue-dummy,ue-fighter)\r?$'
     check 'turn clock' logged 'AFFORD clock=2 '
     check 'attack sent' logged 'VERB attack ue-fighter ue-dummy'
     check 'attack beat' matches 'BEAT (struck|missed) act='
@@ -110,6 +121,8 @@ case "$SCENARIO" in
     check 'turn marker motion' matches 'MOTION turn [^[:space:]]+'
     ;;
   range)
+    check 'archer active colour' logged 'COLOUR ue-archer #63B3ED'
+    check 'far colour' logged 'COLOUR ue-far #E53E3E'
     check 'turn clock' logged 'AFFORD clock=2 '
     check 'attack sent' logged 'VERB attack ue-archer ue-far'
     check 'attack refused with words' matches 'REFUSED attack [^[:space:]]'
@@ -117,6 +130,7 @@ case "$SCENARIO" in
     check 'no swing' not_logged 'MOTION swing'
     ;;
   walk)
+    check 'walker active colour' logged 'COLOUR ue-walker #63B3ED'
     check 'world clock' logged 'AFFORD clock=1 '
     check 'move sent' logged 'VERB move ue-walker (1,1)…(3,1)'
     check 'two moved beats' counted 'BEAT moved ' 2
@@ -125,6 +139,9 @@ case "$SCENARIO" in
     check 'no turn ended beat' not_logged 'BEAT turn-ended '
     ;;
   castle)
+    check 'alice active colour' logged 'COLOUR alice #63B3ED'
+    check 'pedlar colour' logged 'COLOUR pedlar #E53E3E'
+    check 'walls drawn' matches 'WALLS drawn=[1-9][0-9]*'
     check 'nonempty roster' matches 'ROSTER n=[1-9][0-9]* '
     check 'pedlar is monster' logged 'FIGURE pedlar side=monster'
     check 'nonempty atlas' matches 'ATLAS cells=[1-9][0-9]* '
