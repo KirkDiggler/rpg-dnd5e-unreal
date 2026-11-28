@@ -47,10 +47,12 @@ public:
 
 private:
     friend class URpgPlay;
+    friend class FRpgNativeDownedTest;
     TSharedPtr<const FRpgManifest> Manifest;
     void PlaceFigure(const FString& Member, ERpgSide Side, const FIntPoint& Cell, const rpgwire::Member* Identity);
     AActor* SpawnNative(UClass* Class, const FVector& Location) const;
     TSet<FString> NativeFigures;
+    UPROPERTY() TMap<FString, TObjectPtr<UClass>> NativeClasses;
     struct FMotion
     {
         FMotionStep Step;

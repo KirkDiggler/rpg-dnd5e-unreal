@@ -367,6 +367,7 @@ void ARpgBoard::PlaceFigure(const FString& Member, ERpgSide Side, const FIntPoin
         {
             Figures.Add(Member, Figure);
             NativeFigures.Add(Member);
+            NativeClasses.Add(Member, Figure->GetClass());
             SetFigureSide(Member, Side);
             UE_LOG(LogRpgPlay, Display, TEXT("FIGURE %s native=%s"), *Member, *Asset);
             UE_LOG(LogRpgPlay, Display, TEXT("FOOTING %s capsule=%.1f yaw=%.1f"), *Member, Figure->GetActorLocation().Z, Figure->GetActorRotation().Yaw);
@@ -391,6 +392,7 @@ void ARpgBoard::RemoveFigure(const FString& Member)
     if (IsValid(Figure)) Figure->Destroy();
     Figures.Remove(Member);
     NativeFigures.Remove(Member);
+    NativeClasses.Remove(Member);
     Sides.Remove(Member);
     Words.Remove(Member);
     Downed.Remove(Member);
@@ -432,6 +434,32 @@ void ARpgBoard::SetFigureDowned(const FString& Member, bool IsDowned)
 {
     AActor* Figure = Figures.FindRef(Member);
     if (!IsValid(Figure)) return;
+    const bool WasDowned = Downed.FindRef(Member);
+    if (WasDowned == IsDowned) return;
+    if (UClass* NativeClass = NativeClasses.FindRef(Member))
+    {
+        FVector Location = Figure->GetActorLocation();
+        Location.Z = 50.0;
+        AActor* Next = IsDowned ? SpawnShape(GetWorld(), Location) : SpawnNative(NativeClass, Location);
+        if (!Next) return;
+        Figure->Destroy();
+        Figures.Add(Member, Next);
+        Figure = Next;
+        if (IsDowned)
+        {
+            NativeFigures.Remove(Member);
+            UE_LOG(LogRpgPlay, Display, TEXT("FIGURE %s downed=shape"), *Member);
+        }
+        else
+        {
+            NativeFigures.Add(Member);
+            Downed.Add(Member, false);
+            UE_LOG(LogRpgPlay, Display, TEXT("FIGURE %s native=%s"), *Member, *NativeClass->GetOutermost()->GetName());
+            if (FMotion* Motion = Playing.Find(Member)) Motion->Start.Z = Motion->End.Z = Figure->GetActorLocation().Z;
+            UpdateMarker();
+            return;
+        }
+    }
     Downed.Add(Member, IsDowned);
     FRotator Rotation = Figure->GetActorRotation();
     Rotation.Roll = IsDowned ? 90.0 : 0.0;
@@ -439,7 +467,9 @@ void ARpgBoard::SetFigureDowned(const FString& Member, bool IsDowned)
     FVector Location = Figure->GetActorLocation();
     Location.Z = IsDowned && Sides.FindRef(Member) != ERpgSide::Npc ? 30.0 : 50.0;
     Figure->SetActorLocation(Location);
+    if (FMotion* Motion = Playing.Find(Member)) Motion->Start.Z = Motion->End.Z = Location.Z;
     ApplyColour(Member);
+    UpdateMarker();
 }
 void ARpgBoard::MoveMarkerTo(const FString& Whose)
 {
@@ -596,6 +626,7 @@ void ARpgBoard::Clear()
     }
     Figures.Reset();
     NativeFigures.Reset();
+    NativeClasses.Reset();
     Sides.Reset();
     Words.Reset();
     Downed.Reset();
