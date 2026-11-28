@@ -103,6 +103,7 @@ struct Member
     std::string monster_ref; // for a monster: the creature, as a reference
     std::string class_ref;   // for a player: the class, as a reference
     std::string faction; // the engine's word, or empty: no word
+    std::string appearance_ref; // the engine's exact look reference, or empty
 };
 
 struct Sighting

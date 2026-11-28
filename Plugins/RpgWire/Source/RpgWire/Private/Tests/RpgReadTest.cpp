@@ -22,6 +22,29 @@ bool FRpgReadMemberTest::RunTest(const FString& Parameters)
     return !HasAnyErrors();
 }
 
+// An absent field is observably different from a carried empty ref.
+template <typename T>
+static bool HasExactAppearance(const T& Member, const char* Expected)
+{
+    if constexpr (requires { Member.appearance_ref; })
+        return Member.appearance_ref == Expected;
+    return false;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRpgReadAppearanceTest, "RpgWire.Read.ReadMemberCarriesAppearanceRef", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRpgReadAppearanceTest::RunTest(const FString& Parameters)
+{
+    dnd5e::api::session::v1alpha1::PublicMemberInfo Wire;
+    rpgwire::Member Member;
+    Wire.set_appearance_ref("dnd5e:npcs:kingdom:merchant-01");
+    rpgwire::ReadMember(Wire, Member);
+    TestTrue(TEXT("exact ref travels from the wire"), HasExactAppearance(Member, "dnd5e:npcs:kingdom:merchant-01"));
+    Wire.clear_appearance_ref();
+    rpgwire::ReadMember(Wire, Member);
+    TestTrue(TEXT("an absent wire ref clears the member ref"), HasExactAppearance(Member, ""));
+    return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRpgReadSightingTest, "RpgWire.Read.ASightingsEveryFieldComesFromTheWire", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FRpgReadSightingTest::RunTest(const FString& Parameters)
 {

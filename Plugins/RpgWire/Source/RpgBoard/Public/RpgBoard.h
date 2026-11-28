@@ -6,6 +6,8 @@
 #include "RpgBoard.generated.h"
 
 class ACameraActor;
+class FRpgManifest;
+namespace rpgwire { struct Member; }
 class UProceduralMeshComponent;
 
 enum class ERpgSide : uint8 { Player, Npc, Monster };
@@ -25,6 +27,7 @@ public:
     static constexpr double kWalkSeconds = 0.40;
     static constexpr double kSwingSeconds = 0.50;
 
+    void SetManifest(const FRpgManifest& InManifest);
     void BuildFloor(const TArray<FIntPoint>& Cells, const FIntPoint& StartCell);
     void ShotSubjects(TArray<FRpgShotSubject>& Out) const;
     void BuildWalls(const TArray<FRpgWall>& Walls);
@@ -44,6 +47,12 @@ public:
 
 private:
     friend class URpgPlay;
+    friend class FRpgNativeDownedTest;
+    TSharedPtr<const FRpgManifest> Manifest;
+    void PlaceFigure(const FString& Member, ERpgSide Side, const FIntPoint& Cell, const rpgwire::Member* Identity);
+    AActor* SpawnNative(UClass* Class, const FVector& Location) const;
+    TSet<FString> NativeFigures;
+    UPROPERTY() TMap<FString, TObjectPtr<UClass>> NativeClasses;
     struct FMotion
     {
         FMotionStep Step;

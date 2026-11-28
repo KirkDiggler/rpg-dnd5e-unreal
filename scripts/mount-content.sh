@@ -7,7 +7,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # Beside the main checkout, whether this is the checkout itself or a worktree.
 COMMON="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)"
 MAIN="$(cd "$COMMON/.." && pwd)"
-SRC="${RPG_GAME_ASSETS_DIR:-$MAIN/../rpg-game-assets}/unreal/RpgGameAssets/Content/PolygonFantasyKingdom"
+STORE="${RPG_GAME_ASSETS_DIR:-$MAIN/../rpg-game-assets}/unreal/RpgGameAssets"
+SRC="$STORE/Content/PolygonFantasyKingdom"
 DEST="$ROOT/Content/PolygonFantasyKingdom"
 
 # The previous mount used a content plugin. Remove only its old symlink.
@@ -27,3 +28,15 @@ fi
 mkdir -p "$ROOT/Content"
 ln -sfnT "$(cd "$SRC" && pwd)" "$DEST"
 echo "mount-content: $SRC -> Content/PolygonFantasyKingdom"
+
+MANIFEST_SRC="$STORE/Config/RpgGameAssetsManifest.json"
+MANIFEST_DEST="$ROOT/Config/RpgGameAssetsManifest.json"
+if [ -f "$MANIFEST_SRC" ]; then
+  if [ -e "$MANIFEST_DEST" ] && [ ! -L "$MANIFEST_DEST" ]; then
+    echo "mount-content: refusing to replace non-symlink $MANIFEST_DEST" >&2
+    exit 1
+  fi
+  mkdir -p "$ROOT/Config"
+  ln -sfnT "$(realpath "$MANIFEST_SRC")" "$MANIFEST_DEST"
+  echo "mount-content: $MANIFEST_SRC -> Config/RpgGameAssetsManifest.json"
+fi
