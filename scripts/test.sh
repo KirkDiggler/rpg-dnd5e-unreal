@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Runs the automation tests and reads their results (the editor's exit status
 # is not a verdict: it force-terminates itself when the queue is empty).
-#   RpgClient.*  always: the beat-reading, with no engine server needed.
+#   RpgClient.* and RpgBoard.* always, with no engine server needed.
 #   RpgWire.*    when RPGWIRE_TEST_ADDR and RPGWIRE_TEST_INFO name the engine's
 #                test server (the harness lives in rpg-api; see rpg-project#1155).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 UE_ROOT="${UE_ROOT:-$HOME/UnrealEngine/UE_5.9}"
-FILTER="RpgClient."
+FILTER="RpgClient.+RpgBoard."
 if [ -n "${RPGWIRE_TEST_ADDR:-}" ] && [ -n "${RPGWIRE_TEST_INFO:-}" ]; then
   FILTER="Rpg"
 else
-  echo "test: RPGWIRE_TEST_ADDR not set; running the beat-reading's tests only"
+  echo "test: RPGWIRE_TEST_ADDR not set; running the beat-reading's and board's tests only"
 fi
 LOG="${TMPDIR:-/tmp}/rpg-dnd5e-unreal-tests.log"
 "$UE_ROOT/Engine/Binaries/Linux/UnrealEditor-Cmd" "$ROOT/RpgDnd5eUnreal.uproject" \

@@ -21,10 +21,10 @@ from Unreal as a real player on the real stack, a click on the floor
 walks, a click on a figure swings, the world answers, and every figure
 moves only as the record says.
 
-What is here is what the spike proves worth keeping: the core that speaks
-to the engine, and the reading of a record beat. What is not here yet, in
-order: a game mode to launch, content by reference, continuous integration
-that builds the engine, platforms other than Linux.
+The game mode launches into an existing session and shows the board and
+figures as engine shapes. Click a known floor cell to walk or a figure to
+swing; E ends the turn and Escape leaves. Content by reference, continuous
+integration that builds the engine, and other platforms are not here yet.
 
 ## How the project is put together
 
@@ -43,39 +43,45 @@ Source/
   RpgDnd5eUnrealEditor.Target.cs   build the editor's version of the same
   RpgDnd5eUnreal/
     RpgDnd5eUnreal.Build.cs        the game module's dependencies
-    RpgDnd5eUnreal.h, .cpp         its entry point
+    RpgDnd5eUnreal.h, .cpp         module entry point and console injections
+    RpgGameMode.h, .cpp            opens the board for the command-line target
 Plugins/RpgWire/
   RpgWire.uplugin                  the plugin: its modules, and when each loads
   Source/
     RpgWire/
       RpgWire.Build.cs             the core's dependencies, the libraries among them
       Public/                      the headers another module may include:
-                                   RpgSession.h, RpgLog.h
+                                   RpgSession.h, RpgRecordStream.h
       Private/
         pb/                        the compiled contract, generated; 144 files
         RpgSession.cpp             sign in, start a game, send a verb
         RpgRecordStream.cpp        follow the record, live
         Tests/
     RpgClient/
-      RpgMotion.h, .cpp            what a record beat means for figures
-      Tests/
+      Public/RpgMotion.h           beat interpretation and hex coordinates
+      Private/RpgMotion.cpp        what a record beat means for figures
+      Private/Tests/
+    RpgBoard/
+      RpgBoard.Build.cs            the board's dependencies
+      Public/, Private/            board, HUD, play loop and player controller
     ThirdParty/                    gRPC and protobuf, built by scripts/build-libs.sh; never committed
 scripts/                           everything fetched or built goes through these
 protos.ref                         the protos tag this client builds against
 ```
 
-The game module is thin on purpose. The code is in the plugin, in two
+The game module is thin on purpose. The code is in the plugin, in three
 modules:
 
 | the module | owns | keeps |
 |---|---|---|
 | `RpgWire` | talking to the engine: a session, its verbs, the record as it arrives | plain C++; no Unreal type in `Public/` beyond the export macro; every call blocking, off the game thread |
 | `RpgClient` | what a beat means: which cells a walk takes, where a swing lands | functions with no world in them, tested against beats the engine wrote |
+| `RpgBoard` | showing the board, figures and status; passing play input to the wire | no core type in `Public/`; only record beats move figures |
 
 Three Unreal rules give the tree its shape:
 
 - **`Public/` is what other modules may include.** `Private/` is the
-  module's own. `RpgSession.h` is public because the game module calls it.
+  module's own. `RpgSession.h` is public because the board module calls it.
 - **Generated protobuf code cannot cross a module boundary.** Every Unreal
   module is its own shared library, and protobuf's generated symbols break
   across one. So `Private/pb/` compiles as part of `RpgWire`, not in a
@@ -83,11 +89,9 @@ Three Unreal rules give the tree its shape:
 - **A `.Build.cs` is a module's dependency list.** It is C# the build tool
   runs; `RpgWire.Build.cs` is where the gRPC libraries get linked.
 
-At run time, the game module calls `RpgSession`; `RpgSession` calls the
-generated stubs in `pb/`, which speak gRPC to the engine; the record comes
-back through `RpgRecordStream`; `RpgClient` turns each beat into motion.
-The game module itself does little yet. The Game Mode is the next thing to
-build.
+At run time, the game mode hosts the board's play loop. The loop sends verbs
+through `RpgSession` and takes beats from `RpgRecordStream`; it gives each
+beat to `RpgClient` for interpretation before the board shows its motion.
 
 ## Where the contract comes from
 
@@ -136,13 +140,14 @@ scripts/bootstrap.sh     build the libraries (about ten minutes cold), generate
                          beside this repository
 scripts/build-libs.sh    build gRPC and protobuf with the engine's own toolchain,
                          from the pin in scripts/libs/vcpkg.pin
-scripts/test-libs.sh     the three facts about the libraries: built by this
+scripts/test-libs.sh     the checks on the libraries: built by this
                          repository, built as the module is built, the pin written down
 scripts/build.sh         build the editor target
-scripts/test.sh          run the tests: the beat-reading always; the verbs
+scripts/test.sh          run the tests: beat-reading and board always; the verbs
                          against the engine's test server when RPGWIRE_TEST_ADDR
                          and RPGWIRE_TEST_INFO are set
 scripts/perfile-check.py compile every hand-written .cpp on its own
+scripts/play.sh <session> run tomb, range, walk or castle using UE_SPIKE_INFO
 ```
 
 `UE_ROOT` says where the engine is, if not `~/UnrealEngine/UE_5.9`. To

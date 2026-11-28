@@ -3,6 +3,13 @@
 	"EngineAssociation": "5.9",
 	"Category": "",
 	"Description": "The Unreal client of the RPG engine: a second client beside the web's, over the same contract. No licensed content.",
+	"Modules": [
+		{
+			"Name": "RpgDnd5eUnreal",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
 	"Plugins": [
 		{
 			"Name": "RpgWire",

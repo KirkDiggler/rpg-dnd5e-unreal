@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Three facts about the libraries the module links, each said in one line.
+# Four facts about the libraries the module links.
 #   1. No TurboLink anywhere in the repository's own words (ruling R3).
 #   2. Built the way the module is built: no RTTI, no exceptions
 #      (RpgWire.Build.cs compiles the module with neither).
 #   3. One pin, written down: what was built says which commit it came from.
-# The exit status is 0 only when all three hold.
+#   4. Bundled OpenSSL has the Linux linker's symbol-version script.
+# The exit status is 0 only when all four hold.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -53,6 +54,17 @@ if [ -f "$PIN" ] && [ -f "$DEST/SOURCE" ]; then
   fi
 else
   bad "3. no scripts/libs/vcpkg.pin, or no ThirdParty/SOURCE"
+fi
+
+# 4. Unreal reads this path next to the bundled archives when it links a module.
+openssl_dir="$DEST/grpc/lib/linux/Release"
+version_script="$openssl_dir/UE_OpenSSL.ver"
+if [ -f "$openssl_dir/libcrypto.a" ] && [ -f "$openssl_dir/libssl.a" ] && [ -f "$version_script" ] &&
+   grep -qE '^[[:space:]]*OPENSSL_init_crypto;$' "$version_script" &&
+   grep -qE '^[[:space:]]*OPENSSL_init_ssl;$' "$version_script"; then
+  ok "4. bundled OpenSSL has UE_OpenSSL.ver beside the archives, naming OPENSSL_init_crypto and OPENSSL_init_ssl"
+else
+  bad "4. bundled OpenSSL is missing its archives or a complete $version_script; run scripts/build-libs.sh"
 fi
 
 exit $fail

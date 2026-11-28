@@ -1,0 +1,63 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameFramework/Actor.h"
+#include "RpgMotion.h"
+#include "RpgBoard.generated.h"
+
+class ACameraActor;
+class AStaticMeshActor;
+class UProceduralMeshComponent;
+
+enum class ERpgSide : uint8 { Player, Npc, Monster };
+RPGBOARD_API ERpgSide SideOf(int Kind, bool HasClassRef, bool HasMonsterRef);
+RPGBOARD_API bool ReadSighted(const FString& FieldsJson, const FString& Observer, TArray<FString>& OutGained, TArray<FString>& OutLost);
+RPGBOARD_API FString StatusLine(const FString& WhoseTurn, bool TurnClock, const FString& LastWords);
+
+UCLASS()
+class RPGBOARD_API ARpgBoard final : public AActor
+{
+    GENERATED_BODY()
+
+public:
+    ARpgBoard();
+    static constexpr double kWalkSeconds = 0.40;
+    static constexpr double kSwingSeconds = 0.50;
+
+    void BuildFloor(const TArray<FIntPoint>& Cells);
+    void PlaceFigure(const FString& Member, ERpgSide Side, const FIntPoint& Cell);
+    void MoveMarkerTo(const FString& Whose);
+    void Enqueue(const TArray<FMotionStep>& Steps);
+    const FIntPoint* CellOf(const FString& Member) const;
+    bool FigureUnder(const FVector& Origin, const FVector& Direction, FString& Member) const;
+    bool FloorUnder(const FVector& Origin, const FVector& Direction, FIntPoint& Cell) const;
+    ACameraActor* Camera() const;
+    void Clear();
+
+    void Tick(float DeltaSeconds) override;
+
+private:
+    friend class URpgPlay;
+    struct FMotion
+    {
+        FMotionStep Step;
+        FVector Start = FVector::ZeroVector;
+        FVector End = FVector::ZeroVector;
+        double Elapsed = 0.0;
+    };
+    void UpdateMarker();
+    bool HasFigure(const FString& Member) const;
+    void RemoveFigure(const FString& Member);
+    void SetFigureSide(const FString& Member, ERpgSide Side);
+    void BeginMotion(const FMotionStep& Step);
+    TMap<FString, FIntPoint> Cells;
+    FIntPoint StartCell = FIntPoint::ZeroValue;
+    FString Marked;
+    TArray<FMotionStep> Waiting;
+    TMap<FString, FMotion> Playing;
+    UPROPERTY() TObjectPtr<UProceduralMeshComponent> Floor;
+    UPROPERTY() TObjectPtr<ACameraActor> ViewCamera;
+    UPROPERTY() TObjectPtr<AStaticMeshActor> Marker;
+    TMap<FString, ERpgSide> Sides;
+    UPROPERTY() TMap<FString, TObjectPtr<AStaticMeshActor>> Figures;
+};

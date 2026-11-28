@@ -6,5 +6,7 @@ public class RpgDnd5eUnreal : ModuleRules
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         PublicDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine" });
+        PrivateDependencyModuleNames.AddRange(new[] { "RpgBoard" });
+        if (Target.bBuildEditor) PrivateDependencyModuleNames.Add("UnrealEd");
     }
 }
