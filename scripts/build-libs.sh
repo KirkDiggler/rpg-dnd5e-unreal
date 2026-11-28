@@ -95,6 +95,18 @@ put protobuf 'libprotobuf.a' 'libutf8_*.a'
 put abseil 'libabsl_*.a'
 put re2 'libre2.a'
 
+# Unreal's Linux linker reads this script beside the static OpenSSL archives.
+# Give those definitions their own version without hiding other libraries.
+OPENSSL_DIR="$DEST/grpc/lib/linux/Release"
+OPENSSL_SYMBOLS="$(LC_ALL=C nm --defined-only --extern-only "$OPENSSL_DIR/libcrypto.a" "$OPENSSL_DIR/libssl.a" |
+  awk 'NF >= 3 {print $NF}' | LC_ALL=C sort -u)"
+[ -n "$OPENSSL_SYMBOLS" ] || { say "no external OpenSSL symbols in $OPENSSL_DIR"; exit 1; }
+{
+  printf 'UE_OPENSSL_3.6.5 {\n  global:\n'
+  printf '%s\n' "$OPENSSL_SYMBOLS" | awk '{printf "    %s;\n", $0}'
+  printf '};\n'
+} > "$OPENSSL_DIR/UE_OpenSSL.ver"
+
 # What was built, from where, with what: read by scripts/test-libs.sh. The
 # versions are vcpkg's own record of the install; a missing one stops the
 # build here, because a record with a hole in it is worse than none.
