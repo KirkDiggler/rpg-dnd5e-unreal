@@ -426,4 +426,28 @@ bool FSessionRecordTest::RunTest(const FString& Parameters)
     return !HasAnyErrors();
 }
 
+// Captured against pinned server 40da1fc3, castle_1/alice:
+// UnrealEditor-Cmd "$ROOT/RpgDnd5eUnreal.uproject" -ExecCmds="Automation RunTests Rpg"
+//   -TestExit="Automation Test Queue Empty" -nullrhi -unattended -NoSound
+//   -stdout -FullStdOutLogOutput -LogCmds="LogRpgWire Verbose"
+// VIEWRAW: one sighting: subject pedlar, kind MONSTER, stance neutral, standing UP.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSessionViewTest, "RpgWire.Session.ViewListsTheSightingsAsTheFixtureServesThem",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSessionViewTest::RunTest(const FString& Parameters)
+{
+    Fixture fixture;
+    if (!fixture.Load(*this)) return false;
+    Session session = fixture.SignIn(fixture.Need(*this, "castle_host"));
+    std::vector<rpgwire::Sighting> sightings;
+    std::string error;
+    if (!TestTrue(TEXT("View succeeds"), session.View(fixture.Need(*this, "castle"), fixture.Need(*this, "castle_member"), &sightings, &error))) return false;
+    if (!TestEqual(TEXT("one sighting"), static_cast<int32>(sightings.size()), 1)) return false;
+    const auto& pedlar = sightings[0];
+    TestTrue(TEXT("pedlar subject"), pedlar.id == "pedlar");
+    TestTrue(TEXT("pedlar kind"), pedlar.kind == rpgwire::Member::Kind::Monster);
+    TestTrue(TEXT("pedlar stance is neutral"), pedlar.stance == "neutral");
+    TestEqual(TEXT("pedlar standing"), pedlar.standing, 1);
+    return !HasAnyErrors();
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

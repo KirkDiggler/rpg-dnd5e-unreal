@@ -1,4 +1,5 @@
 #include "RpgBoard.h"
+#include "RpgLook.h"
 
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -118,6 +119,22 @@ namespace
         }
         return true;
     }
+}
+
+namespace RpgLook
+{
+FLinearColor FigureColour(ERpgSide Side, const FString& Word, bool Active, bool Downed)
+{
+    if (Downed) return kDowned;
+    if (Word.Equals(TEXT("hostile"), ESearchCase::IgnoreCase)) Side = ERpgSide::Monster;
+    else if (Word.Equals(TEXT("allied"), ESearchCase::IgnoreCase)) Side = ERpgSide::Npc;
+    if (Side == ERpgSide::Player) return Active ? kPlayerActive : kPlayer;
+    if (Side == ERpgSide::Monster) return Active ? kMonsterActive : kMonster;
+    return Active ? kNpcActive : kNpc;
+}
+FString HexOf(const FLinearColor& Colour) { return TEXT("#") + Colour.ToFColor(true).ToHex().Left(6); }
+FVector BoxCentre(double X, double Y, double Elevation, double Height) { return FVector(X, Y, Elevation + Height / 2.0) * kCmPerFoot; }
+FVector BoxSize(double Depth, double Width, double Height) { return FVector(Depth, Width, Height) * kCmPerFoot; }
 }
 
 ERpgSide SideOf(int Kind, bool HasClassRef, bool HasMonsterRef)

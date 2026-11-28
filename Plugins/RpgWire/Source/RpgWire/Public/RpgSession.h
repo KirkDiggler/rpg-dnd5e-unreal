@@ -102,6 +102,17 @@ struct Member
     std::string name;
     std::string monster_ref; // for a monster: the creature, as a reference
     std::string class_ref;   // for a player: the class, as a reference
+    std::string faction; // the engine's word, or empty: no word
+};
+
+struct Sighting
+{
+    std::string id;
+    std::string name;
+    Member::Kind kind = Member::Kind::Unspecified;
+    std::string stance;
+    Cell cell;
+    int standing = 0;
 };
 
 class RPGWIRE_API Session
@@ -164,6 +175,8 @@ public:
     // from the start); at most `limit` beats (0: the engine's own page).
     bool Record(const std::string& session, const std::string& member, const std::string& after_id, int limit,
                 std::vector<RecordBeat>* out, std::string* error);
+
+    bool View(const std::string& session, const std::string& member, std::vector<Sighting>* out, std::string* error);
 
 private:
     std::unique_ptr<grpc::ClientContext> Context() const;
