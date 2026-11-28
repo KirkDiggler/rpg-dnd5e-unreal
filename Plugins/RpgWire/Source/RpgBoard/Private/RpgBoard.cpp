@@ -4,6 +4,8 @@
 #include "Camera/CameraComponent.h"
 #include "CollisionQueryParams.h"
 #include "Components/StaticMeshComponent.h"
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 #include "Engine/HitResult.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
@@ -11,18 +13,41 @@
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "ProceduralMeshComponent.h"
+#include "RpgPlay.h"
+#include "Serialization/JsonSerializer.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Misc/AutomationTest.h"
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRpgSideTest, "RpgBoard.Figure.TheSideComesFromTheReferences",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRpgSideTest, "RpgBoard.Figure.TheSideComesFromTheKindThenTheReferences",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FRpgSideTest::RunTest(const FString& Parameters)
 {
-    TestTrue(TEXT("a class reference identifies a player"), SideOf(true, false) == ERpgSide::Player);
-    TestTrue(TEXT("a creature reference identifies a monster"), SideOf(false, true) == ERpgSide::Monster);
-    TestTrue(TEXT("neither reference identifies an NPC"), SideOf(false, false) == ERpgSide::Npc);
+    TestTrue(TEXT("player kind overrides creature reference"), SideOf(1, false, true) == ERpgSide::Player);
+    TestTrue(TEXT("monster kind overrides class reference"), SideOf(2, true, false) == ERpgSide::Monster);
+    TestTrue(TEXT("world kind overrides both references"), SideOf(3, true, true) == ERpgSide::Npc);
+    TestTrue(TEXT("a class reference identifies a player"), SideOf(0, true, false) == ERpgSide::Player);
+    TestTrue(TEXT("a creature reference identifies a monster"), SideOf(0, false, true) == ERpgSide::Monster);
+    TestTrue(TEXT("neither reference identifies an NPC"), SideOf(0, false, false) == ERpgSide::Npc);
+    return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRpgSightTest, "RpgBoard.Sight.ThePinnedPayloadNamesWhoWasGainedAndLostForItsObserverOnly",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRpgSightTest::RunTest(const FString& Parameters)
+{
+    const FString First(TEXT("{\"beat\":\"sighted\",\"gained\":[\"pedlar\"],\"knowledge_changed\":true,\"observer\":\"alice\"}"));
+    const FString Loss(TEXT("{\"beat\":\"sighted\",\"gained\":[],\"lost\":[\"gate-1\"],\"observer\":\"alice\"}"));
+    TArray<FString> Gained, Lost;
+    TestTrue(TEXT("Alice gains the pedlar"), ReadSighted(First, TEXT("alice"), Gained, Lost));
+    TestTrue(TEXT("only the pedlar was gained"), Gained == TArray<FString>{TEXT("pedlar")} && Lost.IsEmpty());
+    TestTrue(TEXT("Alice loses a guard"), ReadSighted(Loss, TEXT("alice"), Gained, Lost));
+    TestTrue(TEXT("only gate-1 was lost"), Gained.IsEmpty() && Lost == TArray<FString>{TEXT("gate-1")});
+    TestFalse(TEXT("another observer cannot use the loss"), ReadSighted(Loss, TEXT("bob"), Gained, Lost));
+    TestTrue(TEXT("refusal leaves outputs untouched"), Gained.IsEmpty() && Lost == TArray<FString>{TEXT("gate-1")});
+    TestFalse(TEXT("malformed JSON is refused"), ReadSighted(TEXT("{"), TEXT("alice"), Gained, Lost));
     return !HasAnyErrors();
 }
 
@@ -54,16 +79,11 @@ namespace
         return FVector(CentreOf(Cell), Z);
     }
 
-    AStaticMeshActor* Shape(UWorld* World, const TCHAR* Path, const FVector& Location,
-        const FVector& Scale, const FLinearColor& Color)
+    bool ApplyShape(AStaticMeshActor& Actor, const TCHAR* Path, const FLinearColor& Color)
     {
         UStaticMesh* Mesh = LoadObject<UStaticMesh>(nullptr, Path);
-        if (!Mesh) return nullptr;
-        AStaticMeshActor* Actor = World->SpawnActor<AStaticMeshActor>(Location, FRotator::ZeroRotator);
-        if (!Actor) return nullptr;
-        Actor->SetMobility(EComponentMobility::Movable);
-        Actor->SetActorScale3D(Scale);
-        UStaticMeshComponent* Component = Actor->GetStaticMeshComponent();
+        if (!Mesh) return false;
+        UStaticMeshComponent* Component = Actor.GetStaticMeshComponent();
         Component->SetStaticMesh(Mesh);
         if (UMaterial* Material = LoadObject<UMaterial>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial")))
         {
@@ -71,15 +91,54 @@ namespace
             Tint->SetVectorParameterValue(TEXT("Color"), Color);
             Component->SetMaterial(0, Tint);
         }
+        return true;
+    }
+
+    AStaticMeshActor* SpawnShape(UWorld* World, const FVector& Location, const FVector& Scale)
+    {
+        AStaticMeshActor* Actor = World->SpawnActor<AStaticMeshActor>(Location, FRotator::ZeroRotator);
+        if (Actor)
+        {
+            Actor->SetMobility(EComponentMobility::Movable);
+            Actor->SetActorScale3D(Scale);
+        }
         return Actor;
+    }
+
+    bool ReadNames(const FJsonObject& Payload, const TCHAR* Key, TArray<FString>& Names)
+    {
+        if (!Payload.HasField(Key)) return true;
+        const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+        if (!Payload.TryGetArrayField(Key, Values)) return false;
+        for (const auto& Value : *Values)
+        {
+            FString Name;
+            if (!Value->TryGetString(Name) || Name.IsEmpty()) return false;
+            Names.Add(MoveTemp(Name));
+        }
+        return true;
     }
 }
 
-ERpgSide SideOf(bool HasClassRef, bool HasMonsterRef)
+ERpgSide SideOf(int Kind, bool HasClassRef, bool HasMonsterRef)
 {
-    if (HasClassRef) return ERpgSide::Player;
-    if (HasMonsterRef) return ERpgSide::Monster;
+    if (Kind == 1 || (Kind == 0 && HasClassRef)) return ERpgSide::Player;
+    if (Kind == 2 || (Kind == 0 && HasMonsterRef)) return ERpgSide::Monster;
     return ERpgSide::Npc;
+}
+
+bool ReadSighted(const FString& FieldsJson, const FString& Observer, TArray<FString>& OutGained, TArray<FString>& OutLost)
+{
+    TSharedPtr<FJsonObject> Payload;
+    FString Beat, NamedObserver;
+    if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(FieldsJson), Payload) || !Payload.IsValid() ||
+        !Payload->TryGetStringField(TEXT("beat"), Beat) || Beat != TEXT("sighted") ||
+        !Payload->TryGetStringField(TEXT("observer"), NamedObserver) || NamedObserver != Observer) return false;
+    TArray<FString> Gained, Lost;
+    if (!ReadNames(*Payload, TEXT("gained"), Gained) || !ReadNames(*Payload, TEXT("lost"), Lost)) return false;
+    OutGained = MoveTemp(Gained);
+    OutLost = MoveTemp(Lost);
+    return true;
 }
 
 FString StatusLine(const FString& WhoseTurn, bool TurnClock, const FString& LastWords)
@@ -138,29 +197,63 @@ void ARpgBoard::BuildFloor(const TArray<FIntPoint>& KnownCells)
     const double Distance = FMath::Max((Width / 2.0 + Margin) / FMath::Tan(HalfHorizontal),
         (Depth / 2.0 + Margin) / FMath::Tan(HalfVertical));
     const double Pitch = FMath::DegreesToRadians(60.0);
-    ViewCamera = GetWorld()->SpawnActor<ACameraActor>(
-        Middle + FVector(0.0, -Distance * FMath::Cos(Pitch), Distance * FMath::Sin(Pitch)), FRotator(-60.0, 90.0, 0.0));
+    const FVector Location = Middle + FVector(0.0, -Distance * FMath::Cos(Pitch), Distance * FMath::Sin(Pitch));
+    const FRotator Rotation(-60.0, 90.0, 0.0);
+    if (!ViewCamera) ViewCamera = GetWorld()->SpawnActor<ACameraActor>(Location, Rotation);
+    else ViewCamera->SetActorLocationAndRotation(Location, Rotation);
     if (ViewCamera) ViewCamera->GetCameraComponent()->SetFieldOfView(42.0f);
 }
 
 void ARpgBoard::PlaceFigure(const FString& Member, ERpgSide Side, const FIntPoint& Cell)
 {
-    if (Figures.Contains(Member)) return;
+    if (HasFigure(Member)) return;
+    if (AStaticMeshActor* Figure = SpawnShape(GetWorld(), At(Cell, 51.0), FVector(0.60, 0.60, 1.0)))
+    {
+        Figures.Add(Member, Figure);
+        SetFigureSide(Member, Side);
+    }
+}
+
+bool ARpgBoard::HasFigure(const FString& Member) const { return IsValid(Figures.FindRef(Member).Get()); }
+
+void ARpgBoard::RemoveFigure(const FString& Member)
+{
+    AStaticMeshActor* Figure = Figures.FindRef(Member);
+    if (IsValid(Figure)) Figure->Destroy();
+    Figures.Remove(Member);
+    Sides.Remove(Member);
+    Playing.Remove(Member);
+    Waiting.RemoveAll([&Member](const FMotionStep& Step)
+    {
+        return Step.member == Member && Step.kind != FMotionStep::Kind::Turn;
+    });
+    UpdateMarker();
+}
+
+void ARpgBoard::SetFigureSide(const FString& Member, ERpgSide Side)
+{
+    AStaticMeshActor* Figure = Figures.FindRef(Member);
+    const ERpgSide* Previous = Sides.Find(Member);
+    if (!IsValid(Figure) || (Previous && *Previous == Side)) return;
     const TCHAR* Path = TEXT("/Engine/BasicShapes/Sphere.Sphere");
+    const TCHAR* Name = TEXT("npc");
     FLinearColor Tint(0.46f, 0.46f, 0.46f);
     if (Side == ERpgSide::Player)
     {
         Path = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
+        Name = TEXT("player");
         Tint = FLinearColor(0.06f, 0.25f, 0.95f);
     }
     else if (Side == ERpgSide::Monster)
     {
         Path = TEXT("/Engine/BasicShapes/Cube.Cube");
+        Name = TEXT("monster");
         Tint = FLinearColor(0.85f, 0.09f, 0.08f);
     }
-    if (AStaticMeshActor* Figure = Shape(GetWorld(), Path, At(Cell, 51.0), FVector(0.60, 0.60, 1.0), Tint))
+    if (ApplyShape(*Figure, Path, Tint))
     {
-        Figures.Add(Member, Figure);
+        Sides.Add(Member, Side);
+        UE_LOG(LogRpgPlay, Display, TEXT("FIGURE %s side=%s"), *Member, Name);
     }
 }
 
@@ -169,9 +262,12 @@ void ARpgBoard::MoveMarkerTo(const FString& Whose)
     Marked = Whose;
     if (!Marker && !Marked.IsEmpty())
     {
-        Marker = Shape(GetWorld(), TEXT("/Engine/BasicShapes/Cone.Cone"), FVector::ZeroVector,
-            FVector(0.27), FLinearColor::Yellow);
-        if (Marker) Marker->SetActorEnableCollision(false);
+        Marker = SpawnShape(GetWorld(), FVector::ZeroVector, FVector(0.27));
+        if (Marker)
+        {
+            ApplyShape(*Marker, TEXT("/Engine/BasicShapes/Cone.Cone"), FLinearColor::Yellow);
+            Marker->SetActorEnableCollision(false);
+        }
     }
     UpdateMarker();
 }
@@ -285,6 +381,7 @@ void ARpgBoard::Clear()
         if (IsValid(Pair.Value.Get())) Pair.Value->Destroy();
     }
     Figures.Reset();
+    Sides.Reset();
     if (IsValid(Marker.Get())) Marker->Destroy();
     Marker = nullptr;
     Floor->ClearAllMeshSections();

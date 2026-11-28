@@ -10,7 +10,8 @@ class AStaticMeshActor;
 class UProceduralMeshComponent;
 
 enum class ERpgSide : uint8 { Player, Npc, Monster };
-RPGBOARD_API ERpgSide SideOf(bool HasClassRef, bool HasMonsterRef);
+RPGBOARD_API ERpgSide SideOf(int Kind, bool HasClassRef, bool HasMonsterRef);
+RPGBOARD_API bool ReadSighted(const FString& FieldsJson, const FString& Observer, TArray<FString>& OutGained, TArray<FString>& OutLost);
 RPGBOARD_API FString StatusLine(const FString& WhoseTurn, bool TurnClock, const FString& LastWords);
 
 UCLASS()
@@ -45,6 +46,9 @@ private:
         double Elapsed = 0.0;
     };
     void UpdateMarker();
+    bool HasFigure(const FString& Member) const;
+    void RemoveFigure(const FString& Member);
+    void SetFigureSide(const FString& Member, ERpgSide Side);
     void BeginMotion(const FMotionStep& Step);
     TMap<FString, FIntPoint> Cells;
     FIntPoint StartCell = FIntPoint::ZeroValue;
@@ -54,5 +58,6 @@ private:
     UPROPERTY() TObjectPtr<UProceduralMeshComponent> Floor;
     UPROPERTY() TObjectPtr<ACameraActor> ViewCamera;
     UPROPERTY() TObjectPtr<AStaticMeshActor> Marker;
+    TMap<FString, ERpgSide> Sides;
     UPROPERTY() TMap<FString, TObjectPtr<AStaticMeshActor>> Figures;
 };

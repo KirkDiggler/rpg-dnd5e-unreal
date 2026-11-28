@@ -52,6 +52,8 @@ private:
 
     void AcceptBeat(const FString& Beat, const FString& Fields, const FString& Act);
     void TryReady();
+    void ApplySight(const TArray<FString>& Gained, const TArray<FString>& Lost);
+    void RefreshBoard();
     void FailJoin(const FString& Why);
     void Act(FAct Request);
     bool CanAct(const TCHAR* Input) const;
