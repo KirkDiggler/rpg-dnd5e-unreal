@@ -63,6 +63,7 @@ Plugins/RpgWire/
       Private/Tests/
     RpgBoard/
       RpgBoard.Build.cs            the board's dependencies
+      Public/RpgLook.h             look constants and pure colour/box functions
       Public/, Private/            board, HUD, play loop and player controller
     ThirdParty/                    gRPC and protobuf, built by scripts/build-libs.sh; never committed
 scripts/                           everything fetched or built goes through these
@@ -154,6 +155,8 @@ scripts/play.sh <session> run tomb, range, walk or castle using UE_SPIKE_INFO
 work against a branch of the contract before it is published, set
 `RPG_API_PROTOS_DIR` to a checkout of it: what is committed at its `HEAD`
 is used, never a working tree.
+
+Scenario logs name `COLOUR`, `WALLS`, `GROUND`, `FLOOR`, `VIEW`, `FACTIONS` and `SHOT` as observable facts.
 
 The engine's test server is rpg-api's `TestUESpikeServe`, in
 `internal/integration/session/`; it listens on `UE_SPIKE_ADDR` and writes

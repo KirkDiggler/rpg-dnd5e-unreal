@@ -16,7 +16,7 @@ a seam. The workspace's own rules are in the root `AGENTS.md` of game-dev.
 |---|---|---|
 | how the client talks to the engine | `Plugins/RpgWire/Source/RpgWire/` | plain C++: no Unreal type in `Public/` beyond the export macro; every call blocking, run off the game thread |
 | what a record beat means | `Plugins/RpgWire/Source/RpgClient/` | a function with no world in it, tested against beats the engine wrote |
-| how a beat is shown | `Plugins/RpgWire/Source/RpgBoard/` | motion only from what the record says, never from a verb's response |
+| how a beat is shown | `Plugins/RpgWire/Source/RpgBoard/` | motion only from what the record says, never from a verb's response; the look's constants live in `Public/RpgLook.h` and nowhere else |
 | what is generated or built | `scripts/`, never by hand | `Private/pb/` and `Source/ThirdParty/` are ignored for a reason |
 
 No core type in `RpgBoard/Public/`; the loop’s Unreal face lives here and nowhere else.

@@ -56,6 +56,14 @@ logged() { grep -aqF -- "LogRpgPlay: Display: $1" "$LOG"; }
 matches() { grep -aqE -- "LogRpgPlay: Display: $1" "$LOG"; }
 not_logged() { ! logged "$1"; }
 counted() { [ "$(grep -acF -- "LogRpgPlay: Display: $1" "$LOG")" -eq "$2" ]; }
+tomb_walls_match_atlas() {
+  awk '/LogRpgPlay: Display: ATLAS cells=/ { if (match($0, /placed=[0-9]+/)) { n=substr($0,RSTART+7,RLENGTH-7)+0; seen=1 } }
+       /LogRpgPlay: Display: WALLS drawn=/ && seen { if (match($0, /drawn=[0-9]+/)) { w=substr($0,RSTART+6,RLENGTH-6)+0; if ((n==0 && w==0) || (n>0 && w>0)) ok=1; seen=0 } }
+       END { exit !ok }' "$LOG"
+}
+after_end_turn() {
+  awk -v wanted="$1" '/LogRpgPlay: Display: VERB end-turn / { ended=1 } ended && index($0, "LogRpgPlay: Display: " wanted) { found=1 } END { exit !found }' "$LOG"
+}
 refusal_shown() {
   local words
   words="$(sed -n 's/^.*LogRpgPlay: Display: REFUSED attack \(.*[^[:space:]]\)[[:space:]]*$/\1/p' "$LOG" | head -n 1)"
@@ -106,9 +114,9 @@ case "$SCENARIO" in
   tomb)
     check 'fighter active colour' logged 'COLOUR ue-fighter #63B3ED'
     check 'dummy colour' logged 'COLOUR ue-dummy #E53E3E'
-    check 'dummy active colour' logged 'COLOUR ue-dummy #FC8181'
-    check 'fighter inactive colour' logged 'COLOUR ue-fighter #3182CE'
-    check 'walls reported' matches 'WALLS drawn=[0-9]+'
+    check 'dummy active colour after end turn' after_end_turn 'COLOUR ue-dummy #FC8181'
+    check 'fighter inactive colour after end turn' after_end_turn 'COLOUR ue-fighter #3182CE'
+    check 'walls match atlas placement' tomb_walls_match_atlas
     check 'roster names the fighter and skeleton'  matches 'ROSTER n=2 members=(ue-fighter,ue-dummy|ue-dummy,ue-fighter)\r?$'
     check 'turn clock' logged 'AFFORD clock=2 '
     check 'attack sent' logged 'VERB attack ue-fighter ue-dummy'
