@@ -11,6 +11,7 @@ class UProceduralMeshComponent;
 
 enum class ERpgSide : uint8 { Player, Npc, Monster };
 struct FRpgWall { FString Id; FVector Centre; FVector Size; double Yaw = 0.0; bool Door = false; };
+struct FRpgShotSubject { FString What; FVector World; FString Hex; };
 RPGBOARD_API ERpgSide SideOf(int Kind, bool HasClassRef, bool HasMonsterRef);
 RPGBOARD_API bool ReadSighted(const FString& FieldsJson, const FString& Observer, TArray<FString>& OutGained, TArray<FString>& OutLost);
 RPGBOARD_API FString StatusLine(const FString& WhoseTurn, bool TurnClock, const FString& LastWords);
@@ -25,7 +26,8 @@ public:
     static constexpr double kWalkSeconds = 0.40;
     static constexpr double kSwingSeconds = 0.50;
 
-    void BuildFloor(const TArray<FIntPoint>& Cells);
+    void BuildFloor(const TArray<FIntPoint>& Cells, const FIntPoint& StartCell);
+    void ShotSubjects(TArray<FRpgShotSubject>& Out) const;
     void BuildWalls(const TArray<FRpgWall>& Walls);
     void BuildGround();
     void SetFigureWord(const FString& Member, const FString& Word);
@@ -59,6 +61,7 @@ private:
     void BeginMotion(const FMotionStep& Step);
     TMap<FString, FIntPoint> Cells;
     FIntPoint StartCell = FIntPoint::ZeroValue;
+    TArray<FIntPoint> KnownCells;
     FString Marked;
     TArray<FMotionStep> Waiting;
     TMap<FString, FMotion> Playing;

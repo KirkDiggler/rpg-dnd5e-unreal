@@ -3,7 +3,6 @@
 #include "Async/Async.h"
 #include "Containers/StringConv.h"
 #include "Misc/Parse.h"
-#include "UnrealClient.h"
 #include "RpgLook.h"
 #include "RpgBoard.h"
 #include "RpgMotion.h"
@@ -191,13 +190,12 @@ URpgPlay* URpgPlay::Create(UObject* Outer, ARpgBoard* InBoard, FStatus InStatus,
     return Play;
 }
 
-void URpgPlay::SetShotOnJoin(const FString& Path) { ShotOnJoin = Path; }
+void URpgPlay::SetOnFirstJoin(TFunction<void()> Callback) { OnFirstJoin = MoveTemp(Callback); }
 
 void URpgPlay::Join(const FRpgTarget& Target)
 {
     if (State) return;
     bJoining = true;
-    SetShotOnJoin(Target.ShotOnJoin);
     TurnMember = Target.Member;
     State = MakeShared<FState, ESPMode::ThreadSafe>(Target);
     UE_LOG(LogRpgPlay, Display, TEXT("PLAY addr=%s session=%s member=%s"), *Target.Address, *Target.Session, *Target.Member);
@@ -290,8 +288,7 @@ void URpgPlay::TryReady()
     {
         if (!Board->CellOf(Member.Key)) return;
     }
-    Board->StartCell = State->Start;
-    Board->BuildFloor(State->KnownCells);
+    Board->BuildFloor(State->KnownCells, State->Start);
     Board->BuildWalls(State->Walls);
     Board->BuildGround();
     for (const auto& Member : State->Roster) { Board->PlaceFigure(Member.Key, Member.Value, *Board->CellOf(Member.Key)); ApplyCachedWord(Member.Key); }
@@ -373,11 +370,11 @@ void URpgPlay::ApplySight(const TArray<FString>& Gained, const TArray<FString>& 
             {
                 UE_LOG(LogRpgPlay, Display, TEXT("JOINED %s %d %d"), *Member, Cell->X, Cell->Y);
                 ApplyCachedWord(Member);
-                if (!ShotOnJoin.IsEmpty())
+                if (OnFirstJoin)
                 {
-                    FScreenshotRequest::RequestScreenshot(ShotOnJoin, false, false);
-                    UE_LOG(LogRpgPlay, Display, TEXT("SHOT %s"), *ShotOnJoin);
-                    ShotOnJoin.Reset();
+                    auto Callback = MoveTemp(OnFirstJoin);
+                    OnFirstJoin = nullptr;
+                    Callback();
                 }
                 State->bReadRoster = true;
             }
@@ -417,8 +414,7 @@ void URpgPlay::RefreshBoard()
             }
             if (GotAtlas)
             {
-                Play->Board->StartCell = Start;
-                Play->Board->BuildFloor(Cells);
+                Play->Board->BuildFloor(Cells, Start);
                 UE_LOG(LogRpgPlay, Display, TEXT("ATLAS cells=%d placed=%d"), Cells.Num(), static_cast<int32>(Placed));
                 Play->Board->BuildWalls(Walls);
             }

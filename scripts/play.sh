@@ -95,6 +95,7 @@ if [ "$MODE" = --play ]; then
   ' "$LOG")"
   read -r JOINED MONSTER WALKED <<< "$facts"
   check frame test -s "$PLAYFRAME"
+  check palette python3 "$ROOT/scripts/lookcheck.py" "$PLAYFRAME" "$LOG"
   check 'sighted member joined' test "$JOINED" -eq 1
   check 'admitted member resolved to monster from roster' test "$MONSTER" -eq 1
   check 'admitted monster walked' test "$WALKED" -eq 1
@@ -159,4 +160,5 @@ esac
 check 'exit logged' logged 'EXIT'
 check 'no refused exit' not_logged 'REFUSED exit'
 check frame test -s "$FRAME"
+check palette python3 "$ROOT/scripts/lookcheck.py" "$FRAME" "$LOG"
 exit "$FAILS"

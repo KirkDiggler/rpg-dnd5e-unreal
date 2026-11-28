@@ -6,6 +6,7 @@
 #include "Engine/SkyLight.h"
 #include "Engine/World.h"
 #include "HAL/PlatformMisc.h"
+#include "GameFramework/PlayerController.h"
 #include "Misc/App.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Paths.h"
@@ -22,6 +23,21 @@
 
 namespace
 {
+    void TakeShot(UWorld* World, ARpgBoard* Board, const FString& Path)
+    {
+        if (!World || !IsValid(Board) || FApp::IsNullRHIRequested() || FPaths::IsRelative(Path)) return;
+        APlayerController* Controller = World->GetFirstPlayerController();
+        TArray<FRpgShotSubject> Subjects;
+        Board->ShotSubjects(Subjects);
+        for (const FRpgShotSubject& Subject : Subjects)
+        {
+            FVector2D Screen(-1, -1);
+            if (!Controller || !Controller->ProjectWorldLocationToScreen(Subject.World, Screen)) Screen = FVector2D(-1, -1);
+            UE_LOG(LogRpgPlay, Display, TEXT("PIXEL %s %d %d %s"), *Subject.What, static_cast<int32>(FMath::RoundToInt(Screen.X)), static_cast<int32>(FMath::RoundToInt(Screen.Y)), *Subject.Hex);
+        }
+        FScreenshotRequest::RequestScreenshot(Path, false, false);
+        UE_LOG(LogRpgPlay, Display, TEXT("SHOT %s"), *Path);
+    }
     FRpgDnd5eUnrealModule& GameModule()
     {
         return FModuleManager::GetModuleChecked<FRpgDnd5eUnrealModule>(TEXT("RpgDnd5eUnreal"));
@@ -78,6 +94,13 @@ void ARpgGameMode::StartPlay()
             GameModule().Ready(Mode);
         },
         [Weak] { if (ARpgGameMode* Mode = Weak.Get()) Mode->Left(); });
+    if (!Target.ShotOnJoin.IsEmpty())
+    {
+        Play->SetOnFirstJoin([Weak, Path = Target.ShotOnJoin]
+        {
+            if (ARpgGameMode* Mode = Weak.Get()) TakeShot(Mode->GetWorld(), Mode->Board, Path);
+        });
+    }
     Play->Join(Target);
 }
 
@@ -148,7 +171,6 @@ void ARpgGameMode::Inject(const FString& Command, const TArray<FString>& Args)
     }
     else if (Command == TEXT("shot") && Args.Num() == 1 && !FApp::IsNullRHIRequested() && !FPaths::IsRelative(Args[0]))
     {
-        FScreenshotRequest::RequestScreenshot(Args[0], false, false);
-        UE_LOG(LogRpgPlay, Display, TEXT("SHOT %s"), *Args[0]);
+        TakeShot(GetWorld(), Board, Args[0]);
     }
 }

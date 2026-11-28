@@ -175,8 +175,10 @@ ARpgBoard::ARpgBoard()
     Floor->bUseComplexAsSimpleCollision = true;
 }
 
-void ARpgBoard::BuildFloor(const TArray<FIntPoint>& KnownCells)
+void ARpgBoard::BuildFloor(const TArray<FIntPoint>& InCells, const FIntPoint& InStartCell)
 {
+    KnownCells = InCells;
+    StartCell = InStartCell;
     TArray<FVector> Vertices;
     TArray<int32> Triangles;
     TArray<FVector> Normals;
@@ -211,7 +213,6 @@ void ARpgBoard::BuildFloor(const TArray<FIntPoint>& KnownCells)
 void ARpgBoard::RefitCamera()
 {
     FBox Revealed = FloorBounds;
-    for (const auto& Wall : Walls) if (IsValid(Wall.Get())) Revealed += Wall->GetComponentsBoundingBox();
     if (!Revealed.IsValid) return;
     const FVector Middle = Revealed.GetCenter();
     const double Width = FMath::Max(Revealed.GetSize().X, 400.0);
@@ -226,7 +227,41 @@ void ARpgBoard::RefitCamera()
     const FRotator Rotation(-60.0, 90.0, 0.0);
     if (!ViewCamera) ViewCamera = GetWorld()->SpawnActor<ACameraActor>(Location, Rotation);
     else ViewCamera->SetActorLocationAndRotation(Location, Rotation);
-    if (ViewCamera) ViewCamera->GetCameraComponent()->SetFieldOfView(42.0f);
+    if (ViewCamera)
+    {
+        auto* Camera = ViewCamera->GetCameraComponent();
+        Camera->SetFieldOfView(42.0f);
+        Camera->PostProcessSettings.bOverride_AutoExposureMethod = true;
+        Camera->PostProcessSettings.AutoExposureMethod = AEM_Manual;
+        Camera->PostProcessSettings.bOverride_AutoExposureBias = true;
+        Camera->PostProcessSettings.AutoExposureBias = 0.0f;
+    }
+}
+
+void ARpgBoard::ShotSubjects(TArray<FRpgShotSubject>& Out) const
+{
+    Out.Reset();
+    for (const auto& Pair : Figures)
+    {
+        if (!IsValid(Pair.Value.Get())) continue;
+        const ERpgSide* Side = Sides.Find(Pair.Key);
+        if (!Side) continue;
+        Out.Add({Pair.Key, Pair.Value->GetActorLocation(), RpgLook::HexOf(RpgLook::FigureColour(*Side, Words.FindRef(Pair.Key), Pair.Key == Marked, Downed.FindRef(Pair.Key)))});
+    }
+    Out.Add({TEXT("start"), At(StartCell, 2.0), RpgLook::HexOf(RpgLook::kFloorStart)});
+    int Added = 0;
+    for (const FIntPoint& Cell : KnownCells)
+    {
+        if (Cell == StartCell) continue;
+        bool Occupied = false;
+        for (const auto& Figure : Figures)
+        {
+            if (IsValid(Figure.Value.Get()) && CellAt(FVector2D(Figure.Value->GetActorLocation())) == Cell) { Occupied = true; break; }
+        }
+        if (Occupied) continue;
+        Out.Add({FString::Printf(TEXT("cell-%d-%d"), Cell.X, Cell.Y), At(Cell, 2.0), RpgLook::HexOf(RpgLook::kFloor)});
+        if (++Added == 2) break;
+    }
 }
 
 void ARpgBoard::PlaceFigure(const FString& Member, ERpgSide Side, const FIntPoint& Cell)
@@ -473,6 +508,7 @@ void ARpgBoard::Clear()
     if (IsValid(Ground.Get())) Ground->Destroy();
     Ground = nullptr;
     FloorBounds = FBox(ForceInit);
+    KnownCells.Reset();
     if (IsValid(Marker.Get())) Marker->Destroy();
     Marker = nullptr;
     Floor->ClearAllMeshSections();

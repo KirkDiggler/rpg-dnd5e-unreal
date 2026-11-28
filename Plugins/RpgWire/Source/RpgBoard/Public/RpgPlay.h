@@ -26,7 +26,7 @@ public:
 
     static URpgPlay* Create(UObject* Outer, ARpgBoard* Board, FStatus OnStatus, FReady OnReady, FLeft OnLeft);
     void Join(const FRpgTarget& Target);
-    void SetShotOnJoin(const FString& Path);
+    void SetOnFirstJoin(TFunction<void()> OnFirstJoin);
     void ClickCell(const FIntPoint& Cell);
     void ClickFigure(const FString& Member);
     void EndTurn();
@@ -45,7 +45,7 @@ private:
     FLeft OnLeft;
     FString TurnMember;
     FString LastWords;
-    FString ShotOnJoin;
+    TFunction<void()> OnFirstJoin;
     bool bJoining = false;
     bool bJoined = false;
     bool bReady = false;
